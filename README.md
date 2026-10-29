@@ -20,6 +20,8 @@
 - **agent** — 읽기 전용 도구만 쥔다. DB 도 `monitor_ro` 역할로 붙어 쓰기가 불가능하다.
   내장 도구와 `~/.claude` 설정은 전부 차단한다 (`tools=[]`, `setting_sources=[]`, `skills=[]`).
 - **web** — 호스트에서 돈다. 에이전트가 구독 인증을 쓰려면 호스트에 있어야 하기 때문이다.
+- **화면** — React + Vite (`web/ui`). 빌드 결과는 `web/static` 으로 나가고 FastAPI 가 서빙한다.
+  `run.sh` 가 소스가 바뀌었을 때만 다시 빌드한다. 산출물은 `.gitignore` 에 있다.
 
 ## 설정
 
@@ -36,9 +38,15 @@ cp .env.example .env                 # 선택 — 비밀번호·Datadog 키
 ## 실행
 
 ```bash
-./run.sh start      # postgres + 수집기 + 대시보드
+./run.sh start      # postgres + 수집기 + 화면 빌드 + 대시보드
 ./run.sh status
 ./run.sh stop       # DB 볼륨(pgdata)은 남는다
+```
+
+화면만 고칠 때는 Vite 개발 서버가 빠르다. `/api` 와 `/ws` 는 8787 로 넘어간다.
+
+```bash
+cd web/ui && npm run dev     # http://127.0.0.1:5173
 ```
 
 대시보드만 따로 띄우려면:
