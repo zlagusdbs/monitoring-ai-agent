@@ -36,6 +36,7 @@ from claude_agent_sdk import (
     tool,
 )
 
+import catalog
 import policy
 
 PROM = policy.get("endpoints.prometheus", "")
@@ -210,10 +211,44 @@ async def propose_rule(args: dict[str, Any]) -> dict[str, Any]:
         "사용자가 누르면 적용된다. 저장은 아직 되지 않았다."}]}
 
 
+VERDICTS = ("execute", "hold", "escalate")
+
+
+@tool(
+    "decide_action",
+    "발동한 규칙에 달린 후보 조치를 실행할지 정한다. 이 도구는 실행하지 않는다 — "
+    "판단만 돌려주고, 실행과 기록은 서버가 한다.\n"
+    "verdict 는 " + " | ".join(VERDICTS) + " 중 하나다.\n"
+    "  execute: 사전 확인을 모두 통과했다. 지금 해도 된다\n"
+    "  hold: 지금은 하지 않는다 (중복 실행, 상한, 최근 이력 등)\n"
+    "  escalate: 이 조치로는 풀리지 않는다. 사람이 봐야 한다\n"
+    "reason 은 무엇을 확인해서 그렇게 정했는지 한국어로 적는다. 아침에 볼 유일한 근거이므로 "
+    "비워 두면 받지 않는다.\n"
+    "쓸 수 있는 action_id: " + ", ".join(catalog.CATALOG),
+    {"action_id": str, "verdict": str, "reason": str},
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def decide_action(args: dict[str, Any]) -> dict[str, Any]:
+    action = catalog.get(args.get("action_id", ""))
+    if action is None:
+        return {"content": [{"type": "text", "text":
+            f"카탈로그에 없는 조치다: {args.get('action_id')!r}. "
+            f"쓸 수 있는 값: {list(catalog.CATALOG)}"}]}
+    verdict = args.get("verdict", "")
+    if verdict not in VERDICTS:
+        return {"content": [{"type": "text", "text":
+            f"알 수 없는 verdict: {verdict!r}. 가능한 값: {list(VERDICTS)}"}]}
+    if not (args.get("reason") or "").strip():
+        return {"content": [{"type": "text", "text": "사유(reason)를 비워 둘 수 없다"}]}
+    return {"content": [{"type": "text", "text":
+        f"{action.id} 에 대해 {verdict} 로 판단했다. 실행과 기록은 서버가 한다."}]}
+
+
 ops = create_sdk_mcp_server(
     name="ops",
     version="2.0.0",
-    tools=[monitor_status, monitor_series, prom_query, admin_get, propose_rule],
+    tools=[monitor_status, monitor_series, prom_query, admin_get, propose_rule,
+           decide_action],
 )
 
 # 에이전트를 내 개인 환경에서 격리한다. 이걸 빼면 ~/.claude 의 규칙·스킬을
@@ -227,6 +262,7 @@ OPTIONS = ClaudeAgentOptions(
         "mcp__ops__prom_query",
         "mcp__ops__admin_get",
         "mcp__ops__propose_rule",
+        "mcp__ops__decide_action",
     ],
     tools=[],                    # 내장 도구 전부 끔 (Skill, ToolSearch 포함)
     setting_sources=[],          # ~/.claude 설정·CLAUDE.md 를 읽지 않음
