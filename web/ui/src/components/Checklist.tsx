@@ -3,8 +3,6 @@ import { useEffect, useState } from "react";
 import { Check, Settings, api } from "../api";
 import { hm } from "../ui";
 
-const EVERY = [10, 30, 60];
-
 const BADGE: Record<string, { label: string; cls: string }> = {
   ok: { label: "정상", cls: "ok" },
   fail: { label: "이상", cls: "firing" },
@@ -67,20 +65,10 @@ export function Checklist({ tick, settings, onSettings }: Props) {
           <button
             className={`rbtn${auto ? " sel" : ""}`}
             onClick={() => onSettings({ checklist_auto: auto ? "off" : "on" })}
-            title="켜면 주기마다 한 건씩 다시 확인한다"
+            title="켜면 30분마다 한 건씩 다시 확인한다"
           >
             자동 {auto ? "켬" : "끔"}
           </button>
-          {auto &&
-            EVERY.map((m) => (
-              <button
-                key={m}
-                className={`rbtn${String(m) === settings?.checklist_every_min ? " sel" : ""}`}
-                onClick={() => onSettings({ checklist_every_min: String(m) })}
-              >
-                {m}분
-              </button>
-            ))}
         </span>
       </div>
 
