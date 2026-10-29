@@ -60,5 +60,10 @@
   },
   "datadog_scale": {
     "_ms 로 끝나는 지표는 초 → ms": 1000
+  },
+  "labels": {
+    "es": "Elasticsearch · ENV",
+    "es_index": "색인 · ENV",
+    "api": "SERVICE · Datadog"
   }
 }

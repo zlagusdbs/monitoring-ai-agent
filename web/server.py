@@ -28,7 +28,7 @@ import executors  # noqa: E402
 import policy  # noqa: E402
 import throttling  # noqa: E402
 from collector.store import Store  # noqa: E402
-from web import runner  # noqa: E402
+from web import checks, runner  # noqa: E402
 from agent import ops  # noqa: E402  커스텀 도구 4개가 들어 있는 in-process MCP 서버
 from claude_agent_sdk import (  # noqa: E402
     AssistantMessage,
@@ -76,19 +76,38 @@ async def _act(action_id: str, params: dict) -> dict:
 
 async def _loop() -> None:
     seen: dict[str, str] = {}
+    last_tick = 0.0
     while True:
         await asyncio.sleep(TICK_SEC)
         try:
             store = Store(DSN)
             try:
-                if runner.setting(store, "auto_check") != "on":
-                    continue
-                await runner.tick(store, seen, now_ts=int(time.time()),
-                                  ask=_ask, act=_act)
+                stale = _stale_check(store)
+                every = int(runner.setting(store, "auto_every_min")) * 60
+                if (
+                    runner.setting(store, "auto_check") == "on"
+                    and time.time() - last_tick >= every
+                ):
+                    last_tick = time.time()
+                    await runner.tick(store, seen, now_ts=int(time.time()),
+                                      ask=_ask, act=_act)
             finally:
                 store.close()
+            # 한 주기에 한 건만 — 항목이 많아도 한꺼번에 몰리지 않는다.
+            if stale:
+                await run_check(stale["name"], stale["question"])
         except Exception:
             log.exception("자동 점검 중 오류 — 다음 주기에 다시 시도한다")
+
+
+def _stale_check(store: Store) -> dict | None:
+    """자동 갱신이 켜져 있을 때, 가장 오래된 항목 하나를 고른다."""
+    if runner.setting(store, "checklist_auto") != "on":
+        return None
+    every = int(runner.setting(store, "checklist_every_min")) * 60
+    cutoff = int(time.time()) - every
+    stale = [c for c in store.checks() if (c["checked_at"] or 0) < cutoff]
+    return min(stale, key=lambda c: c["checked_at"] or 0) if stale else None
 
 
 @contextlib.asynccontextmanager
@@ -194,6 +213,7 @@ def status() -> dict:
     c.close()
     return {
         "ready": True, "rules": rules, "metrics": metrics,
+        "labels": policy.get("labels", {}),
         "samples": total, "last_collect": last, "now": int(time.time()),
     }
 
@@ -205,6 +225,14 @@ async def chat(ws: WebSocket) -> None:
         async with ClaudeSDKClient(options=OPTIONS) as client:
             while True:
                 text = await ws.receive_text()
+                command = checks.parse_command(text)
+                if command:
+                    name, question = command
+                    await ws.send_json({"type": "text", "text": f"체크리스트에 '{name}' 추가. 확인 중…"})
+                    await run_check(name, question)
+                    await ws.send_json({"type": "checks"})
+                    await ws.send_json({"type": "done", "subtype": "check"})
+                    continue
                 await client.query(text)
                 async for message in client.receive_response():
                     if isinstance(message, AssistantMessage):
@@ -299,6 +327,70 @@ def get_settings() -> dict:
         store.close()
     out["action_enabled"] = ACTION_ENABLED
     return out
+
+
+async def _investigate(name: str, question: str) -> tuple[str, str]:
+    """에이전트에게 한 번 물어보고 답을 글로 받는다."""
+    said: list[str] = []
+    async with ClaudeSDKClient(options=OPTIONS) as client:
+        await client.query(checks.prompt_for(name, question))
+        async for message in client.receive_response():
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if hasattr(block, "text") and block.text:
+                        said.append(block.text)
+    answer = "\n".join(said).strip()
+    return ("ok", answer) if answer else ("failed", "에이전트가 답하지 않았다")
+
+
+async def run_check(name: str, question: str) -> dict:
+    store = _write_db()
+    try:
+        store.put_check(name, question)
+        try:
+            state, answer = await asyncio.wait_for(_investigate(name, question), 180)
+        except asyncio.TimeoutError:
+            state, answer = "failed", "타임아웃 (180초)"
+        except Exception as e:  # 에이전트가 죽어도 항목은 남는다
+            state, answer = "failed", f"{type(e).__name__}: {e}"
+        store.set_check_result(name, state, answer)
+    finally:
+        store.close()
+    return {"name": name, "state": state, "result": answer}
+
+
+@app.get("/api/checks")
+def list_checks() -> dict:
+    if not _ready():
+        return {"checks": []}
+    store = Store(DSN)
+    try:
+        return {"checks": store.checks()}
+    finally:
+        store.close()
+
+
+@app.post("/api/checks/{name}/run")
+async def rerun_check(name: str) -> dict:
+    store = Store(DSN)
+    try:
+        row = next((c for c in store.checks() if c["name"] == name), None)
+    finally:
+        store.close()
+    if row is None:
+        return {"ok": False, "error": f"없는 항목: {name}"}
+    result = await run_check(name, row["question"])
+    return {"ok": result["state"] == "ok", **result}
+
+
+@app.delete("/api/checks/{name}")
+def remove_check(name: str) -> dict:
+    store = _write_db()
+    try:
+        store.delete_check(name)
+    finally:
+        store.close()
+    return {"ok": True, "name": name}
 
 
 @app.get("/api/series")

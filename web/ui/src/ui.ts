@@ -18,7 +18,7 @@ export const mem = {
 };
 
 /** 일정 주기로 다시 불러온다. 실패하면 직전 값을 그대로 둔다. */
-export function usePoll<T>(load: () => Promise<T>, ms: number): T | null {
+export function usePoll<T>(load: () => Promise<T>, ms: number, bump = 0): T | null {
   const [value, setValue] = useState<T | null>(null);
   const fn = useRef(load);
   fn.current = load;
@@ -38,7 +38,7 @@ export function usePoll<T>(load: () => Promise<T>, ms: number): T | null {
       alive = false;
       clearInterval(id);
     };
-  }, [ms]);
+  }, [ms, bump]);
   return value;
 }
 

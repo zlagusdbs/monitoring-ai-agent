@@ -34,6 +34,7 @@ export function Chat({ onTool, onRuleSaved }: Props) {
           onTool(name);
           setLog((l) => [...l, { who: "tool", text: `↳ ${name}` }]);
         } else if (m.type === "proposal") setProposals((p) => [...p, m.rule]);
+        else if (m.type === "checks") onRuleSaved();
         else if (m.type === "error") {
           setLog((l) => [...l, { who: "bot", text: `오류: ${m.text}` }]);
           setBusy(false);

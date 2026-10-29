@@ -18,6 +18,7 @@ export type Status = {
   reason?: string;
   rules: Rule[];
   metrics: Record<string, Sample[]>;
+  labels?: Record<string, string>;
   samples: number;
   last_collect: number;
   now: number;
@@ -47,6 +48,15 @@ export type Settings = Record<string, string> & { action_enabled: boolean };
 
 export type Line = { labels: Labels; points: { ts: number; value: number }[] };
 
+export type Check = {
+  name: string;
+  question: string;
+  result: string | null;
+  state: string;
+  checked_at: number | null;
+  created: number;
+};
+
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
@@ -74,4 +84,7 @@ export const api = {
   deleteRule: (id: string) => send(`/api/rules/${encodeURIComponent(id)}`, undefined, "DELETE"),
   addRule: (rule: unknown) => send("/api/rules", rule),
   throttle: (body: unknown) => send("/api/throttle", body),
+  checks: () => get<{ checks: Check[] }>("/api/checks"),
+  runCheck: (name: string) => send(`/api/checks/${encodeURIComponent(name)}/run`),
+  deleteCheck: (name: string) => send(`/api/checks/${encodeURIComponent(name)}`, undefined, "DELETE"),
 };

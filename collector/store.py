@@ -60,6 +60,15 @@ CREATE TABLE IF NOT EXISTS settings (
     value   TEXT   NOT NULL,
     updated BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS checks (
+    name       TEXT PRIMARY KEY,
+    question   TEXT   NOT NULL,
+    result     TEXT,
+    state      TEXT   NOT NULL,
+    checked_at BIGINT,
+    created    BIGINT NOT NULL
+);
 """
 
 
@@ -201,6 +210,34 @@ class Store:
             " ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated=EXCLUDED.updated",
             (key, value, int(time.time())),
         )
+
+    def put_check(self, name: str, question: str) -> None:
+        self.conn.execute(
+            "INSERT INTO checks (name, question, state, created) VALUES (%s,%s,'pending',%s)"
+            " ON CONFLICT (name) DO UPDATE SET question=EXCLUDED.question, state='pending'",
+            (name, question, int(time.time())),
+        )
+
+    def set_check_result(self, name: str, state: str, result: str,
+                         ts: int | None = None) -> None:
+        self.conn.execute(
+            "UPDATE checks SET state=%s, result=%s, checked_at=%s WHERE name=%s",
+            (state, result, ts or int(time.time()), name),
+        )
+
+    def checks(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT name, question, result, state, checked_at, created"
+            " FROM checks ORDER BY created"
+        ).fetchall()
+        return [
+            {"name": n, "question": q, "result": r, "state": s,
+             "checked_at": at, "created": c}
+            for n, q, r, s, at, c in rows
+        ]
+
+    def delete_check(self, name: str) -> None:
+        self.conn.execute("DELETE FROM checks WHERE name=%s", (name,))
 
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0]

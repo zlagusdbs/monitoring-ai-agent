@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Status, api } from "./api";
 import { Chat } from "./components/Chat";
+import { Checklist } from "./components/Checklist";
 import { Clusters, IndexPanel } from "./components/Metrics";
 import { Report } from "./components/Report";
 import { Rules } from "./components/Rules";
@@ -51,31 +52,34 @@ export default function App() {
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
-  const status = usePoll<Status>(() => api.status(), 10_000);
-  const report = usePoll(() => api.report(), 10_000);
-  const settings = usePoll(() => api.settings(), 10_000);
+  const status = usePoll<Status>(() => api.status(), 10_000, tick);
+  const report = usePoll(() => api.report(), 10_000, tick);
+  const settings = usePoll(() => api.settings(), 10_000, tick);
   const splitter = useSplitter();
 
   const [plan, setPlan] = useState<string[]>([]);
   const addPlan = useCallback((name: string) => setPlan((p) => [...p, `→ ${name}`]), []);
 
-  useEffect(() => {
-    if (tick) api.status().catch(() => undefined);
-  }, [tick]);
-
-  const toggleAuto = async (on: boolean) => {
-    await api.setSettings({ auto_check: on ? "on" : "off" });
+  const saveSettings = async (values: Record<string, string>) => {
+    await api.setSettings(values);
     refresh();
   };
+
+  const toggleAuto = (on: boolean) => saveSettings({ auto_check: on ? "on" : "off" });
 
   return (
     <>
       <div className="left">
-        <StatusBar report={report} settings={settings} onToggleAuto={toggleAuto} />
+        <StatusBar
+          report={report}
+          settings={settings}
+          onToggleAuto={toggleAuto}
+          onSettings={saveSettings}
+        />
 
-        <div className="panel sec-wrap">
-          <Section id="rep" title="켜 둔 동안 있었던 일" height={190}>
-            <Report data={report} />
+        <div className="panel">
+          <Section id="chk" title="체크리스트" height={190}>
+            <Checklist tick={tick} settings={settings} onSettings={saveSettings} />
           </Section>
         </div>
 
@@ -84,13 +88,16 @@ export default function App() {
         {status?.ready && (
           <>
             <div className="panel">
-              <Section id="cl" title="클러스터">
+              <Section id="cl" title={status.labels?.es ?? "Elasticsearch"}>
                 <Clusters status={status} />
               </Section>
-              <Section id="ix" title="색인">
+              <Section id="ix" title={status.labels?.es_index ?? "색인"}>
                 <IndexPanel status={status} />
               </Section>
-              <Section id="tf" title="트래픽 · 지연">
+            </div>
+
+            <div className="panel">
+              <Section id="tf" title={status.labels?.api ?? "API · Datadog"}>
                 <Traffic status={status} />
               </Section>
             </div>
@@ -110,6 +117,12 @@ export default function App() {
             ) : (
               plan.map((line, i) => <div key={i}>{line}</div>)
             )}
+          </Section>
+        </div>
+
+        <div className="panel">
+          <Section id="rep" title="켜 둔 동안 있었던 일" height={190}>
+            <Report data={report} />
           </Section>
         </div>
 
