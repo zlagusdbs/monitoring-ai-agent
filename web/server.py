@@ -27,6 +27,7 @@ import catalog  # noqa: E402
 import executors  # noqa: E402
 import policy  # noqa: E402
 import throttling  # noqa: E402
+from collector.evaluator import evaluate  # noqa: E402
 from collector.store import Store  # noqa: E402
 from web import checks, runner  # noqa: E402
 from agent import ops  # noqa: E402  커스텀 도구 4개가 들어 있는 in-process MCP 서버
@@ -74,9 +75,12 @@ async def _act(action_id: str, params: dict) -> dict:
                                        enabled=ACTION_ENABLED, client=client)
 
 
+# 다음 자동 점검까지 남은 시간을 화면에 보여 주려고 마지막 시각을 들고 있는다.
+AUTO = {"last_tick": time.time()}
+
+
 async def _loop() -> None:
     seen: dict[str, str] = {}
-    last_tick = 0.0
     while True:
         await asyncio.sleep(TICK_SEC)
         try:
@@ -86,9 +90,9 @@ async def _loop() -> None:
                 every = int(runner.setting(store, "auto_every_min")) * 60
                 if (
                     runner.setting(store, "auto_check") == "on"
-                    and time.time() - last_tick >= every
+                    and time.time() - AUTO["last_tick"] >= every
                 ):
-                    last_tick = time.time()
+                    AUTO["last_tick"] = time.time()
                     await runner.tick(store, seen, now_ts=int(time.time()),
                                       ask=_ask, act=_act)
             finally:
@@ -170,6 +174,17 @@ def _write_db() -> Store:
     return Store(DSN)
 
 
+def _evaluate_now() -> None:
+    """규칙을 바꾸면 바로 다시 판정한다. 5분을 기다리면 옛 판정이 그대로 보인다."""
+    store = _write_db()
+    try:
+        evaluate(store)
+    except Exception:
+        log.exception("즉시 평가 실패 — 다음 수집 주기에 다시 한다")
+    finally:
+        store.close()
+
+
 def _ready() -> bool:
     try:
         _db().close()
@@ -184,8 +199,8 @@ def status() -> dict:
         return {"ready": False, "reason": "Postgres 에 붙지 못했다 — docker compose up -d"}
     c = _db()
     rules = []
-    for rid, sev, title, spec in c.execute(
-        "SELECT id, severity, title, spec FROM rules WHERE enabled ORDER BY id"
+    for rid, sev, title, spec, updated in c.execute(
+        "SELECT id, severity, title, spec, updated FROM rules WHERE enabled ORDER BY id"
     ).fetchall():
         row = c.execute(
             "SELECT state, detail, ts FROM findings WHERE rule_id=%s ORDER BY ts DESC LIMIT 1",
@@ -195,7 +210,7 @@ def status() -> dict:
         rules.append(
             {
                 "id": rid, "severity": sev, "title": title, "state": state,
-                "detail": detail, "ts": ts, "spec": spec,
+                "detail": detail, "ts": ts, "updated": updated, "spec": spec,
                 "action": spec.get("action") or {},
             }
         )
@@ -219,13 +234,51 @@ def status() -> dict:
     }
 
 
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
+
+def _unpack(raw: str) -> tuple[str, list[dict]]:
+    """채팅 프레임을 (글, 이미지들) 로 나눈다. 옛 형식(글자만)도 그대로 받는다."""
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return raw, []
+    if not isinstance(payload, dict):
+        return raw, []
+    images = [
+        im for im in (payload.get("images") or [])
+        if im.get("media_type") in IMAGE_TYPES
+        and len(im.get("data") or "") <= MAX_IMAGE_BYTES * 4 // 3
+    ]
+    return str(payload.get("text") or ""), images[:3]
+
+
+async def _as_message(text: str, images: list[dict]):
+    """이미지는 content block 으로 넣어야 한다. 문자열로는 못 보낸다."""
+    content: list[dict] = [
+        {"type": "image",
+         "source": {"type": "base64", "media_type": im["media_type"], "data": im["data"]}}
+        for im in images
+    ]
+    if text:
+        content.append({"type": "text", "text": text})
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": "default",
+    }
+
+
 @app.websocket("/ws/chat")
 async def chat(ws: WebSocket) -> None:
     await ws.accept()
     try:
         async with ClaudeSDKClient(options=OPTIONS) as client:
             while True:
-                text = await ws.receive_text()
+                raw = await ws.receive_text()
+                text, images = _unpack(raw)
                 command = checks.parse_command(text)
                 if command:
                     name, question = command
@@ -234,7 +287,7 @@ async def chat(ws: WebSocket) -> None:
                     await ws.send_json({"type": "checks"})
                     await ws.send_json({"type": "done", "subtype": "check"})
                     continue
-                await client.query(text)
+                await client.query(_as_message(text, images) if images else text)
                 async for message in client.receive_response():
                     if isinstance(message, AssistantMessage):
                         for block in message.content:
@@ -275,6 +328,7 @@ def add_rule(rule: dict = Body(...)) -> dict:
         store.put_rule(rule["rule_id"], rule.get("severity", "medium"), rule["title"], spec)
     finally:
         store.close()
+    _evaluate_now()
     return {"ok": True, "id": rule["rule_id"]}
 
 
@@ -327,7 +381,17 @@ def get_settings() -> dict:
     finally:
         store.close()
     out["action_enabled"] = ACTION_ENABLED
+    out["auto_next_in"] = _next_tick_in(out)
     return out
+
+
+def _next_tick_in(settings: dict) -> int:
+    """다음 자동 점검까지 남은 초. 꺼져 있으면 -1."""
+    if settings.get("auto_check") != "on":
+        return -1
+    every = int(settings.get("auto_every_min", 1)) * 60
+    left = AUTO["last_tick"] + every - time.time()
+    return max(0, min(every, int(round(left))))
 
 
 async def _investigate(name: str, question: str) -> tuple[str, str]:
@@ -470,9 +534,12 @@ async def run_action(req: dict = Body(...)) -> dict:
 def set_rule_enabled(rule_id: str, req: dict = Body(...)) -> dict:
     store = _write_db()
     try:
-        store.set_rule_enabled(rule_id, bool(req.get("enabled")))
+        ok = store.set_rule_enabled(rule_id, bool(req.get("enabled")))
     finally:
         store.close()
+    if not ok:
+        return {"ok": False, "error": f"없는 규칙: {rule_id}"}
+    _evaluate_now()
     return {"ok": True, "id": rule_id}
 
 

@@ -136,9 +136,10 @@ class Store:
         )
         return cur.rowcount > 0
 
-    def set_rule_enabled(self, rule_id: str, enabled: bool) -> None:
-        self.conn.execute("UPDATE rules SET enabled=%s, updated=%s WHERE id=%s",
-                          (enabled, int(time.time()), rule_id))
+    def set_rule_enabled(self, rule_id: str, enabled: bool) -> bool:
+        cur = self.conn.execute("UPDATE rules SET enabled=%s, updated=%s WHERE id=%s",
+                                (enabled, int(time.time()), rule_id))
+        return cur.rowcount > 0
 
     def delete_rule(self, rule_id: str) -> None:
         self.conn.execute("DELETE FROM rules WHERE id=%s", (rule_id,))

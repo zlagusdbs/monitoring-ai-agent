@@ -80,3 +80,19 @@ def test_rule_can_be_turned_off_and_on(client):
 def test_rule_can_be_deleted(client):
     assert client.delete("/api/rules/r1").json()["ok"] is True
     assert client.get("/api/status").json()["rules"] == []
+
+
+def test_toggling_a_missing_rule_reports_failure(client):
+    assert client.post("/api/rules/nope/enabled", json={"enabled": True}).json()["ok"] is False
+
+
+def test_saving_a_rule_evaluates_it_at_once(client, store):
+    store.put("m", {}, 99.0)
+    client.post("/api/rules", json={
+        "rule_id": "now", "title": "즉시", "severity": "high",
+        "check_type": "metric_threshold",
+        "check_fields": '{"metric":"m","op":">","value":10}',
+        "guards": "[]", "action": "{}",
+    })
+    row = next(r for r in client.get("/api/status").json()["rules"] if r["id"] == "now")
+    assert row["state"] == "firing" and row["ts"] >= row["updated"]

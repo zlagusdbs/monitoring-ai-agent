@@ -172,3 +172,23 @@ def test_rename_endpoint(client, store):
 def test_rename_endpoint_rejects_empty(client, store):
     store.put_check("a", "q")
     assert client.post("/api/checks/a/rename", json={"name": "  "}).json()["ok"] is False
+
+
+def test_next_tick_is_minus_one_while_auto_is_off():
+    assert server._next_tick_in({"auto_check": "off"}) == -1
+
+
+def test_next_tick_counts_down_from_the_interval():
+    server.AUTO["last_tick"] = time.time()
+    left = server._next_tick_in({"auto_check": "on", "auto_every_min": "5"})
+    assert 290 <= left <= 300
+
+
+def test_next_tick_is_zero_when_overdue():
+    server.AUTO["last_tick"] = time.time() - 9999
+    assert server._next_tick_in({"auto_check": "on", "auto_every_min": "1"}) == 0
+
+
+def test_countdown_is_sane_right_after_start():
+    server.AUTO["last_tick"] = time.time()
+    assert server._next_tick_in({"auto_check": "on", "auto_every_min": "1"}) in range(55, 61)

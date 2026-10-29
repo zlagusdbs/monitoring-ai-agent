@@ -1,5 +1,19 @@
+import { useEffect, useState } from "react";
+
 import { Report, Settings } from "../api";
 import { hhmmss } from "../ui";
+
+/** 서버가 준 남은 초에서 1초씩 깎는다. 새 값이 오면 거기에 맞춘다. */
+function useCountdown(seconds: number | undefined) {
+  const [left, setLeft] = useState(seconds ?? -1);
+  useEffect(() => setLeft(seconds ?? -1), [seconds]);
+  useEffect(() => {
+    if (left < 0) return;
+    const id = setInterval(() => setLeft((v) => (v > 0 ? v - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [left < 0]);
+  return left;
+}
 
 const EVERY = [1, 5, 10, 30];
 
@@ -11,6 +25,7 @@ type Props = {
 };
 
 export function StatusBar({ report, settings, onToggleAuto, onSettings }: Props) {
+  const left = useCountdown(settings?.auto_next_in as number | undefined);
   if (!report || !settings) return <div className="bar">불러오는 중</div>;
 
   const on = settings.auto_check === "on";
@@ -38,6 +53,10 @@ export function StatusBar({ report, settings, onToggleAuto, onSettings }: Props)
               {m}분
             </button>
           ))}
+          <span className="tick" title="다음 자동 점검까지 남은 시간">
+            <span className={left === 0 ? "spin" : undefined}>⟳</span>
+            {left >= 0 ? ` ${left}초` : ""}
+          </span>
         </span>
       )}
       <span>

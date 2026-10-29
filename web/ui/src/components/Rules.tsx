@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Rule, Settings, Status, api } from "../api";
+import { hhmmss } from "../ui";
 import { Modal } from "./Modal";
 import { RuleDetail } from "./RuleDetail";
 
@@ -93,7 +94,14 @@ export function Rules({
             >
               지우기
             </button>
-            <div className="d">{r.detail}</div>
+            <div className="d">
+              {r.detail}
+              {r.updated > r.ts ? (
+                <span className="stale"> · 규칙이 바뀐 뒤 아직 평가 전</span>
+              ) : (
+                <span className="when"> · {hhmmss(r.ts)} 판정</span>
+              )}
+            </div>
             <ThrottleAction rule={r} />
           </span>
         </div>

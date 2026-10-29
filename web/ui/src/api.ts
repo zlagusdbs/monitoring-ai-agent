@@ -9,6 +9,7 @@ export type Rule = {
   state: string;
   detail: string;
   ts: number;
+  updated: number;
   spec: Record<string, unknown>;
   action: Record<string, unknown>;
 };
@@ -44,7 +45,10 @@ export type Report = {
   todo: string[];
 };
 
-export type Settings = Record<string, string> & { action_enabled: boolean };
+export type Settings = Record<string, string | number | boolean> & {
+  action_enabled: boolean;
+  auto_next_in?: number;
+};
 
 export type Line = { labels: Labels; points: { ts: number; value: number }[] };
 

@@ -65,7 +65,14 @@ export function RuleDetail({ rule, settings }: { rule: Rule; settings: Settings 
         <dd>{describeGuard(spec.guard ?? [])}</dd>
 
         <dt>지금 근거</dt>
-        <dd>{rule.detail || "-"}</dd>
+        <dd>
+          {rule.detail || "-"}
+          <div className="d" style={{ fontSize: 11.5 }}>
+            {rule.updated > rule.ts
+              ? "규칙이 바뀐 뒤 아직 평가 전 — 다음 수집 주기(5분)에 다시 본다"
+              : `${new Date(rule.ts * 1000).toLocaleTimeString("ko-KR", { hour12: false })} 판정`}
+          </div>
+        </dd>
 
         <dt>발동하면</dt>
         <dd>

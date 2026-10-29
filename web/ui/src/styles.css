@@ -64,6 +64,8 @@ h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--dim); text
 .modal-b .detail { margin-top: 0; border-left: 0; padding-left: 0; }
 .modal-b .detail dl { grid-template-columns: 86px 1fr; gap: 7px 12px; }
 
+.rule .stale { color: var(--amber); }
+.rule .when { color: var(--dim); }
 .rule .t { cursor: pointer; }
 .rule .t:hover { text-decoration: underline dotted; color: var(--accent); }
 .detail { margin-top: 7px; border-left: 2px solid var(--line); padding: 2px 0 2px 9px; }
@@ -99,6 +101,17 @@ h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--dim); text
 .msg { white-space: pre-wrap; word-break: break-word; }
 .me { align-self: flex-end; background: var(--accent); color: #fff; padding: 6px 10px; border-radius: 10px; max-width: 85%; }
 .bot { max-width: 100%; }
+.chat-h { display: flex; align-items: center; justify-content: space-between; }
+.chat-h .rbtn { text-transform: none; letter-spacing: 0; }
+.shot { display: block; max-width: 100%; border-radius: 8px; margin-bottom: 5px; }
+.shots { display: flex; gap: 6px; flex-wrap: wrap; }
+.thumb { position: relative; display: inline-block; }
+.thumb img { height: 46px; border-radius: 6px; border: 1px solid var(--line); display: block; }
+.thumb button {
+  position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; padding: 0;
+  border-radius: 50%; font-size: 11px; line-height: 1; background: var(--red);
+}
+.attach { padding: 7px 10px; font-size: 14px; }
 .tool { font-family: var(--mono); font-size: 11.5px; color: var(--dim); border-left: 2px solid var(--line); padding-left: 8px; }
 form { display: flex; gap: 6px; }
 input { flex: 1; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--txt); font: inherit; }
@@ -120,6 +133,13 @@ button:disabled { opacity: .45; cursor: default; }
 .bar b { color: var(--txt); font-weight: 600; }
 .sw { padding: 3px 9px; font-size: 11.5px; background: var(--line); color: var(--txt); }
 .sw.on { background: var(--green); color: #fff; }
+.tick {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  min-width: 52px; justify-content: flex-end;
+}
+.tick .spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .ev { padding: 6px 0; border-top: 1px solid var(--line); }
 .ev:first-child { border-top: 0; }
