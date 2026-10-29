@@ -10,6 +10,10 @@ import sys
 import time
 from pathlib import Path
 
+import asyncio
+import contextlib
+import logging
+
 import httpx
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -18,8 +22,12 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import catalog  # noqa: E402
+import executors  # noqa: E402
 import policy  # noqa: E402
 import throttling  # noqa: E402
+from collector.store import Store  # noqa: E402
+from web import runner  # noqa: E402
 from agent import ops  # noqa: E402  커스텀 도구 4개가 들어 있는 in-process MCP 서버
 from claude_agent_sdk import (  # noqa: E402
     AssistantMessage,
@@ -29,7 +37,72 @@ from claude_agent_sdk import (  # noqa: E402
 )
 
 DB = ROOT / "data" / "monitor.db"
-app = FastAPI(title="index monitor")
+STARTED = int(time.time())
+TICK_SEC = 60
+
+log = logging.getLogger("server")
+
+# 조치는 기본으로 나가지 않는다. 켜도 상한과 화이트리스트를 서버가 다시 본다.
+ACTION_ENABLED = os.getenv("MON_ACTION_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+async def _ask(candidate: dict) -> dict:
+    """후보 하나를 에이전트에게 넘기고 decide_action 호출을 받아 온다."""
+    prompt = (
+        f"규칙 {candidate['rule_id']} ({candidate['severity']}) 이 발동했다.\n"
+        f"제목: {candidate['title']}\n"
+        f"후보 조치: {candidate['action_id']} — {candidate['action']}\n"
+        f"상한 상태: {candidate['limit'] or '여유 있음'}\n"
+        f"최근 24시간 이 규칙의 조치 기록: {candidate['history']}\n\n"
+        "읽기 전용 도구로 확인한 뒤 decide_action 을 정확히 한 번 호출해라."
+    )
+    async with ClaudeSDKClient(options=OPTIONS) as client:
+        await client.query(prompt)
+        async for message in client.receive_response():
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if getattr(block, "name", "").endswith("__decide_action"):
+                        return getattr(block, "input", {}) or {}
+    return {}
+
+
+async def _act(action_id: str, params: dict) -> dict:
+    async with httpx.AsyncClient(timeout=30) as client:
+        return await executors.execute(action_id, params,
+                                       enabled=ACTION_ENABLED, client=client)
+
+
+async def _loop() -> None:
+    seen: dict[str, str] = {}
+    while True:
+        await asyncio.sleep(TICK_SEC)
+        try:
+            if not DB.exists():
+                continue
+            store = Store(DB)
+            try:
+                if runner.setting(store, "auto_check") != "on":
+                    continue
+                await runner.tick(store, seen, now_ts=int(time.time()),
+                                  ask=_ask, act=_act)
+            finally:
+                store.close()
+        except Exception:
+            log.exception("자동 점검 중 오류 — 다음 주기에 다시 시도한다")
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = asyncio.create_task(_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="index monitor", lifespan=lifespan)
 
 # 운영 트래픽을 막는 유일한 경로다. 기본은 꺼져 있고, 켜려면 환경변수를 명시해야 한다.
 THROTTLE_ENABLED = os.getenv("MON_THROTTLE_ENABLED", "").lower() in ("1", "true", "yes")
@@ -171,6 +244,99 @@ def add_rule(rule: dict = Body(...)) -> dict:
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     conn.close()
     return {"ok": True, "id": rule["rule_id"]}
+
+
+def _write_db() -> Store:
+    return Store(DB)
+
+
+@app.get("/api/report")
+def report() -> dict:
+    if not DB.exists():
+        return {"started": STARTED, "items": [], "todo": []}
+    store = Store(DB)
+    try:
+        items = store.actions_since(STARTED)
+        findings = store.conn.execute(
+            "SELECT ts, rule_id, state, detail FROM findings WHERE ts >= ? ORDER BY ts",
+            (STARTED,),
+        ).fetchall()
+    finally:
+        store.close()
+    return {
+        "started": STARTED,
+        "now": int(time.time()),
+        "items": items,
+        "findings": [
+            {"ts": ts, "rule_id": rid, "state": st, "detail": d}
+            for ts, rid, st, d in findings
+        ],
+        "todo": _todo(items),
+    }
+
+
+def _todo(items: list[dict]) -> list[str]:
+    out = []
+    for a in items:
+        if a["verdict"] == "escalate":
+            out.append(f"{a['rule_id']} — 사람이 봐야 함: {a['reason']}")
+        elif a["outcome"] == "blocked":
+            out.append(f"{a['rule_id']} — 상한에 걸려 못 함: {a['detail']}")
+        elif a["outcome"] == "disabled":
+            out.append(f"{a['rule_id']} — 실행이 꺼져 있어 기록만 남았다")
+        elif a["outcome"] == "sent" and a["action_id"] == "trigger_coupon_full":
+            out.append(f"{a['rule_id']} — 색인 결과를 확인하고 Active 전환이 필요한지 본다")
+    return out
+
+
+@app.get("/api/settings")
+def get_settings() -> dict:
+    if not DB.exists():
+        return dict(runner.DEFAULTS)
+    store = Store(DB)
+    try:
+        out = {k: runner.setting(store, k) for k in runner.DEFAULTS}
+    finally:
+        store.close()
+    out["action_enabled"] = ACTION_ENABLED
+    return out
+
+
+@app.post("/api/settings")
+def set_settings(values: dict = Body(...)) -> dict:
+    store = _write_db()
+    try:
+        for k, v in values.items():
+            if k in runner.DEFAULTS:
+                store.set_setting(k, str(v))
+        store.checkpoint()
+    finally:
+        store.close()
+    return {"ok": True}
+
+
+@app.post("/api/action")
+async def run_action(req: dict = Body(...)) -> dict:
+    """사람이 화면에서 누르는 실행. 에이전트는 이 경로에 닿지 못한다."""
+    action_id = req.get("action_id", "")
+    if catalog.get(action_id) is None:
+        return {"ok": False, "error": f"카탈로그에 없는 조치: {action_id}"}
+    store = _write_db()
+    try:
+        now = int(time.time())
+        why = catalog.check_limits(store, action_id, now)
+        if why:
+            return {"ok": False, "error": why}
+        params = catalog.fixed_params(action_id) | (req.get("params") or {})
+        result = await _act(action_id, params)
+        store.put_action(req.get("rule_id", "manual"), action_id, "execute",
+                         req.get("reason") or "화면에서 사람이 실행", params=params,
+                         outcome=result["outcome"], detail=result["detail"],
+                         revert=result.get("revert"), ts=now)
+        store.checkpoint()
+    finally:
+        store.close()
+    return {"ok": result["outcome"] in ("sent", "dry_only"), **result}
 
 
 @app.post("/api/throttle")
