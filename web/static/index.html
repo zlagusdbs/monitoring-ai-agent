@@ -18,7 +18,7 @@
 body{margin:0;background:var(--bg);color:var(--txt);
      font:14px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;height:100vh;
      display:grid;grid-template-columns:1fr 420px;gap:10px;padding:10px}
-.left{display:grid;grid-template-rows:auto 1fr auto;gap:10px;min-height:0}
+.left{display:grid;grid-template-rows:auto auto auto 1fr auto;gap:10px;min-height:0}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
        padding:12px 14px;min-height:0;overflow:auto}
 h2{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--dim);
@@ -64,12 +64,31 @@ button:disabled{opacity:.45;cursor:default}
 .act button{padding:4px 10px;font-size:12px;background:var(--red)}
 .out{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px;
      white-space:pre-wrap;word-break:break-all}
+.bar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-family:var(--mono);
+     font-size:11.5px;color:var(--dim);background:var(--panel);border:1px solid var(--line);
+     border-radius:10px;padding:9px 14px}
+.bar b{color:var(--txt);font-weight:600}
+.sw{padding:3px 9px;font-size:11.5px;background:var(--line);color:var(--txt)}
+.sw.on{background:var(--green);color:#fff}
+.rep{max-height:230px}
+.ev{padding:6px 0;border-top:1px solid var(--line)}
+.ev:first-child{border-top:0}
+.ev .w{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.ev .sub{margin-left:14px;font-size:12.5px}
+.ev .sub .r{color:var(--dim)}
+.v-execute{color:var(--green)} .v-hold{color:var(--amber)}
+.v-escalate{color:var(--red);font-weight:600} .v-no_decision{color:var(--dim)}
+.todo{margin-top:8px;border-top:1px solid var(--line);padding-top:7px;font-size:12.5px}
+.rbtn{padding:3px 8px;font-size:11px;background:transparent;color:var(--dim);
+      border:1px solid var(--line);margin-left:6px}
 </style>
 </head>
 <body>
 <div class="left">
+  <div class="bar" id="bar">불러오는 중</div>
+  <div class="panel rep"><h2>켜 둔 동안 있었던 일</h2><div id="rep"></div></div>
   <div class="panel">
-    <h2>클러스터 (c3)</h2><div id="cl"></div>
+    <h2>클러스터</h2><div id="cl"></div>
     <h2 style="margin-top:12px">색인</h2><div id="ix"></div>
     <h2 style="margin-top:12px">트래픽</h2><div id="tf" class="cards"></div>
   </div>
@@ -139,11 +158,65 @@ async function refresh(){
            ? `<div class="act"><code>발동 시: ${a.uri} ${a.rate}% ${a.ttl_minutes}분</code></div>` : "");
       return `<div class="rule"><span class="badge ${r.state}">${r.state}</span>
         <span style="flex:1"><span class="t">${r.title}</span> <span class="d">· ${r.severity}</span>
+        <button class="rbtn" onclick="ruleEnabled('${r.id}',false)">끄기</button>
+        <button class="rbtn" onclick="ruleDelete('${r.id}')">지우기</button>
         <div class="d">${r.detail||""}</div>${act}</span></div>`;
     }).join("");
   $("#foot").textContent=`표본 ${d.samples.toLocaleString()}행 · 마지막 수집 ${ago(d.last_collect)}`;
 }
-refresh(); setInterval(refresh,10000);
+async function refreshReport(){
+  let d, st;
+  try{ d=await (await fetch("/api/report")).json();
+       st=await (await fetch("/api/settings")).json(); }catch{ return; }
+  const on=st.auto_check==="on";
+  const since=new Date(d.started*1000).toLocaleTimeString("ko-KR",{hour12:false});
+  const mins=Math.floor((d.now-d.started)/60);
+  const acts=d.items.filter(i=>i.outcome==="sent").length;
+  const esc=d.items.filter(i=>i.verdict==="escalate").length;
+  $("#bar").innerHTML=
+    `<span>자동 점검 <button class="sw ${on?"on":""}" onclick="toggleAuto(${!on})">`+
+    `${on?"켬":"끔"}</button></span>`+
+    `<span>오늘 <b>${d.items.length}</b>/${st.daily_max}회</span>`+
+    `<span>조치 <b>${acts}</b></span>`+
+    `<span>사람 호출 <b>${esc}</b></span>`+
+    `<span>실행 ${st.action_enabled?"켜짐":"꺼짐 (기록만)"}</span>`+
+    `<span>${since} 켬 · ${mins}분</span>`;
+
+  const byRule={};
+  d.findings.filter(f=>f.state==="firing").forEach(f=>{byRule[f.ts+"|"+f.rule_id]=f;});
+  const w=t=>new Date(t*1000).toLocaleTimeString("ko-KR",{hour12:false});
+  const lines=[];
+  Object.values(byRule).forEach(f=>lines.push(
+    `<div class="ev"><span class="w">${w(f.ts)}</span> <b>${f.rule_id}</b> 발동
+     <div class="sub r">${f.detail||""}</div></div>`));
+  d.items.forEach(a=>lines.push(
+    `<div class="ev"><span class="w">${w(a.ts)}</span>
+     <b>${a.action_id||"-"}</b>
+     <span class="v-${a.verdict}">${a.verdict}</span>
+     ${a.outcome?`<span class="w">(${a.outcome})</span>`:""}
+     <div class="sub r">${a.reason||""}${a.detail?" · "+a.detail:""}</div></div>`));
+  $("#rep").innerHTML=lines.join("")||`<div class="foot">기록 없음</div>`;
+  if(d.todo.length) $("#rep").innerHTML+=
+    `<div class="todo"><b>지금 할 일</b>`+
+    d.todo.map(t=>`<div class="r">· ${t}</div>`).join("")+`</div>`;
+}
+async function toggleAuto(on){
+  await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({auto_check:on?"on":"off"})});
+  refreshReport();
+}
+async function ruleEnabled(id,on){
+  await fetch(`/api/rules/${id}/enabled`,{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:on})});
+  refresh();
+}
+async function ruleDelete(id){
+  if(!confirm(`규칙 ${id} 을 지웁니다. 진행할까요?`)) return;
+  await fetch(`/api/rules/${id}`,{method:"DELETE"});
+  refresh();
+}
+refresh(); refreshReport();
+setInterval(refresh,10000); setInterval(refreshReport,10000);
 
 let ws, busy=false;
 function connect(){
