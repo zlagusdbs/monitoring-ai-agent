@@ -1,16 +1,18 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
+import { Section } from "./Section";
 
 type Msg = { who: "me" | "bot" | "tool"; text: string };
 type Proposal = Record<string, string>;
 
 type Props = {
+  plan: string[];
   onTool: (name: string) => void;
   onRuleSaved: () => void;
 };
 
-export function Chat({ onTool, onRuleSaved }: Props) {
+export function Chat({ plan, onTool, onRuleSaved }: Props) {
   const [log, setLog] = useState<Msg[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [busy, setBusy] = useState(false);
@@ -98,6 +100,13 @@ export function Chat({ onTool, onRuleSaved }: Props) {
         />
         <button disabled={busy}>보내기</button>
       </form>
+      <Section id="plan" title="Plan — 에이전트가 하는 일" height={90}>
+        {plan.length === 0 ? (
+          <div className="foot">대기 중 — 채팅으로 물어보면 어떤 도구를 쓰는지 여기 쌓인다</div>
+        ) : (
+          plan.map((line, i) => <div key={i}>{line}</div>)
+        )}
+      </Section>
     </div>
   );
 }

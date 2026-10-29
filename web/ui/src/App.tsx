@@ -111,16 +111,6 @@ export default function App() {
         )}
 
         <div className="panel">
-          <Section id="plan" title="Plan — 에이전트가 하는 일" height={120}>
-            {plan.length === 0 ? (
-              <div className="foot">대기 중</div>
-            ) : (
-              plan.map((line, i) => <div key={i}>{line}</div>)
-            )}
-          </Section>
-        </div>
-
-        <div className="panel">
           <Section id="rep" title="켜 둔 동안 있었던 일" height={190}>
             <Report data={report} />
           </Section>
@@ -136,7 +126,7 @@ export default function App() {
 
       <div className="split" ref={splitter} title="끌어서 폭 조절" />
 
-      <Chat onTool={addPlan} onRuleSaved={refresh} />
+      <Chat plan={plan} onTool={addPlan} onRuleSaved={refresh} />
     </>
   );
 }
