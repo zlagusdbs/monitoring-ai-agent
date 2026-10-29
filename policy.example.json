@@ -9,10 +9,21 @@
     "doc": "에이전트에게 보여 줄 읽기 전용 경로 설명"
   },
   "targets": {
-    "clusters": ["cluster-a", "cluster-b"],
-    "aliases": ["alias-a", "alias-b"],
-    "full_topic_prefixes": ["alias-a-full", "alias-b-full"],
-    "static_topics": ["PREFIX_alias-a-incr-1"],
+    "clusters": [
+      "cluster-a",
+      "cluster-b"
+    ],
+    "aliases": [
+      "alias-a",
+      "alias-b"
+    ],
+    "full_topic_prefixes": [
+      "alias-a-full",
+      "alias-b-full"
+    ],
+    "static_topics": [
+      "PREFIX_alias-a-incr-1"
+    ],
     "topic_version": "1"
   },
   "prometheus_queries": {
@@ -26,10 +37,23 @@
   "throttle": {
     "path": "/admin/throttling",
     "max_ttl_min": 240,
-    "allowed": {"URI_NAME": "켤 수 있는 이유"},
-    "blocked": {"URI_NAME": "켜면 안 되는 이유"}
+    "allowed": {
+      "URI_NAME": "켤 수 있는 이유"
+    },
+    "blocked": {
+      "URI_NAME": "켜면 안 되는 이유"
+    }
   },
   "notes": {
     "operating": "에이전트 시스템 프롬프트에 넣을 운영 상식 한두 줄"
+  },
+  "actions": {
+    "dag_id": "DAG-NAME",
+    "airflow": "http://AIRFLOW-HOST",
+    "trigger_path": "/api/v2/dags/{dag_id}/dagRuns",
+    "namespace": "NAMESPACE",
+    "pod_allowed": {
+      "POD-OR-DEPLOYMENT-NAME": "재기동해도 되는 이유"
+    }
   }
 }
