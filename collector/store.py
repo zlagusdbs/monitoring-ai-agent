@@ -38,6 +38,25 @@ CREATE TABLE IF NOT EXISTS findings (
     detail  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_findings_rule_ts ON findings(rule_id, ts);
+
+CREATE TABLE IF NOT EXISTS actions (
+    ts        INTEGER NOT NULL,
+    rule_id   TEXT    NOT NULL,
+    action_id TEXT    NOT NULL,
+    verdict   TEXT    NOT NULL,
+    reason    TEXT,
+    params    TEXT,
+    outcome   TEXT,
+    detail    TEXT,
+    revert    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_actions_ts ON actions(ts);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key     TEXT PRIMARY KEY,
+    value   TEXT    NOT NULL,
+    updated INTEGER NOT NULL
+);
 """
 
 
@@ -108,6 +127,64 @@ class Store:
         self.conn.execute(
             "INSERT INTO findings (ts, rule_id, state, detail) VALUES (?,?,?,?)",
             (ts or int(time.time()), rule_id, state, detail),
+        )
+
+    def put_action(
+        self,
+        rule_id: str,
+        action_id: str,
+        verdict: str,
+        reason: str,
+        params: dict | None = None,
+        outcome: str | None = None,
+        detail: str | None = None,
+        revert: str | None = None,
+        ts: int | None = None,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO actions"
+            " (ts, rule_id, action_id, verdict, reason, params, outcome, detail, revert)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (ts or int(time.time()), rule_id, action_id, verdict, reason,
+             json.dumps(params, ensure_ascii=False) if params is not None else None,
+             outcome, detail, revert),
+        )
+
+    def actions_since(self, since: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT ts, rule_id, action_id, verdict, reason, params, outcome, detail, revert"
+            " FROM actions WHERE ts >= ? ORDER BY ts",
+            (since,),
+        ).fetchall()
+        return [
+            {
+                "ts": ts, "rule_id": rid, "action_id": aid, "verdict": v, "reason": reason,
+                "params": json.loads(params) if params else None,
+                "outcome": outcome, "detail": detail, "revert": revert,
+            }
+            for ts, rid, aid, v, reason, params, outcome, detail, revert in rows
+        ]
+
+    def count_actions(
+        self,
+        action_id: str,
+        since: int,
+        outcomes: tuple[str, ...] = ("sent", "dry_only"),
+    ) -> int:
+        marks = ",".join("?" * len(outcomes))
+        return self.conn.execute(
+            f"SELECT COUNT(*) FROM actions WHERE action_id=? AND ts>=? AND outcome IN ({marks})",
+            (action_id, since, *outcomes),
+        ).fetchone()[0]
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        row = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated) VALUES (?,?,?)",
+            (key, value, int(time.time())),
         )
 
     def count(self) -> int:
