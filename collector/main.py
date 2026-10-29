@@ -5,6 +5,7 @@ import logging
 import time
 
 import httpx
+import net
 
 from . import config, sources
 from .evaluator import evaluate
@@ -47,7 +48,7 @@ async def main() -> None:
     store = Store(config.DSN)
     n_rules = seed(store)
     log.info("수집기 시작 — 주기 %ds, 기본 규칙 %d개", config.INTERVAL_SEC, n_rules)
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with net.async_client(timeout=30) as client:
         while True:
             started = time.monotonic()
             try:

@@ -26,6 +26,7 @@ from typing import Any
 import throttling
 
 import httpx
+import net
 import psycopg
 from claude_agent_sdk import (
     AssistantMessage,
@@ -52,7 +53,7 @@ DSN_RO = os.getenv("MON_DSN_RO", "postgresql://monitor_ro:monitor_ro@127.0.0.1:5
     annotations=ToolAnnotations(readOnlyHint=True),
 )
 async def prom_query(args: dict[str, Any]) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=20) as c:
+    async with net.async_client(timeout=20) as c:
         r = await c.get(f"{PROM}/api/v1/query", params={"query": args["promql"]})
     return {"content": [{"type": "text", "text": r.text[:4000]}]}
 
@@ -68,7 +69,7 @@ async def admin_get(args: dict[str, Any]) -> dict[str, Any]:
     path = args["path"]
     if not path.startswith("/"):
         return {"content": [{"type": "text", "text": "path 는 '/' 로 시작해야 한다"}]}
-    async with httpx.AsyncClient(timeout=30) as c:
+    async with net.async_client(timeout=30) as c:
         r = await c.get(f"{ADMIN}{path}")
     return {"content": [{"type": "text", "text": f"HTTP {r.status_code}\n{r.text[:4000]}"}]}
 

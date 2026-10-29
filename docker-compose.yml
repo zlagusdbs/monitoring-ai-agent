@@ -35,9 +35,11 @@ services:
       DD_SITE: "${DD_SITE:-datadoghq.com}"
       DD_API_KEY: "${DD_API_KEY:-}"
       DD_APP_KEY: "${DD_APP_KEY:-}"
+      MON_CA_BUNDLE: /app/ca-bundle.pem
     volumes:
       # 사내 주소·정책은 레포에 올리지 않는다. 호스트 파일을 읽기 전용으로 붙인다.
       - ./policy.json:/app/policy.json:ro
+      - ./ca-bundle.pem:/app/ca-bundle.pem:ro
 
 volumes:
   pgdata:

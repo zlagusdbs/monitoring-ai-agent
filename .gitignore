@@ -5,4 +5,5 @@ __pycache__/
 data/
 *.swp
 policy.json
+ca-bundle.pem
 docs/superpowers/

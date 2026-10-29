@@ -14,6 +14,7 @@ import contextlib
 import logging
 
 import httpx
+import net
 import psycopg
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -68,7 +69,7 @@ async def _ask(candidate: dict) -> dict:
 
 
 async def _act(action_id: str, params: dict) -> dict:
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with net.async_client(timeout=30) as client:
         return await executors.execute(action_id, params,
                                        enabled=ACTION_ENABLED, client=client)
 
@@ -372,7 +373,7 @@ def do_throttle(req: dict = Body(...)) -> dict:
             "revert": throttling.revert_curl(uri),
         }
     try:
-        r = httpx.post(
+        r = net.post(
             f"{throttling.BASE}{throttling.PATH}",
             json=throttling.body(uri, rate, ttl),
             timeout=15,
