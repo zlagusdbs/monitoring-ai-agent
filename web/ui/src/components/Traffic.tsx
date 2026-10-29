@@ -11,14 +11,9 @@ import {
 } from "recharts";
 
 import { Line as Series, Status, api } from "../api";
-import { hm, mem, ms, num } from "../ui";
+import { hm, ms, num } from "../ui";
 
-const RANGES = [
-  { label: "30분", minutes: 30 },
-  { label: "2시간", minutes: 120 },
-  { label: "6시간", minutes: 360 },
-  { label: "24시간", minutes: 1440 },
-];
+const WINDOW_MIN = 120;
 
 const METRICS = [
   "api_latency_p50_ms",
@@ -145,9 +140,8 @@ function Chart({
 }
 
 export function Traffic({ status }: { status: Status }) {
-  const [minutes, setMinutes] = useState(() => Number(mem.get("ui:range") ?? 120));
   const [focus, setFocus] = useState<string | null>(null);
-  const lines = useLines(minutes);
+  const lines = useLines(WINDOW_MIN);
 
   const latency = useMemo(
     () =>
@@ -206,11 +200,6 @@ export function Traffic({ status }: { status: Status }) {
   }
   const rows = Object.entries(endpoints).sort((a, b) => (b[1].rps ?? 0) - (a[1].rps ?? 0));
 
-  const setRange = (m: number) => {
-    setMinutes(m);
-    mem.set("ui:range", String(m));
-  };
-
   return (
     <>
       <div className="chartbar">
@@ -220,22 +209,11 @@ export function Traffic({ status }: { status: Status }) {
             전체로
           </button>
         )}
-        <span className="ranges">
-          {RANGES.map((r) => (
-            <button
-              key={r.minutes}
-              className={`rbtn${r.minutes === minutes ? " sel" : ""}`}
-              onClick={() => setRange(r.minutes)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </span>
       </div>
 
       <div className="charts">
         <Chart
-          title="지연 (로그 축)"
+          title={`지연 — 최근 ${WINDOW_MIN / 60}시간 (로그 축)`}
           rows={latency}
           unit="ms"
           log
@@ -246,7 +224,7 @@ export function Traffic({ status }: { status: Status }) {
           ]}
         />
         <Chart
-          title="요청"
+          title={`요청 — 최근 ${WINDOW_MIN / 60}시간`}
           rows={traffic}
           unit="req/s"
           lines={[{ key: "rps", name: "req/s", color: "var(--green)" }]}
