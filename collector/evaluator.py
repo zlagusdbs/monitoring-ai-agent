@@ -32,6 +32,8 @@ def _guard_ok(guards: list[dict], store: Store, now: dt.datetime) -> tuple[bool,
         if kind == "after_hour":
             if now.hour < int(g["hour"]):
                 return False, f"아직 {g['hour']}시 이전"
+        elif kind == "paused_until":
+            continue
         elif kind == "active_cluster_known":
             if _active_cluster(store) is None:
                 return False, "Active 클러스터를 모름"
@@ -56,7 +58,10 @@ def _check_topic_offset_zero(spec: dict, store: Store, now: dt.datetime):
 
 def _check_alias_age(spec: dict, store: Store, now: dt.datetime):
     """Active 클러스터의 alias 인덱스 이름에서 날짜를 읽어 경과일을 본다."""
-    alias, max_days = spec["alias"], int(spec["max_days"])
+    alias = spec["alias"]
+    if spec.get("max_days") in (None, ""):
+        return False, "max_days 가 정해지지 않았다 — 값을 정해야 켤 수 있다"
+    max_days = int(spec["max_days"])
     active = _active_cluster(store)
     for r in store.latest("alias_index"):
         lab = r["labels"]

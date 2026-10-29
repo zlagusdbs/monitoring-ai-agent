@@ -113,6 +113,21 @@ class Store:
              int(time.time())),
         )
 
+    def put_rule_if_absent(self, rule_id: str, severity: str, title: str,
+                           spec: dict, enabled: bool = False) -> bool:
+        exists = self.conn.execute("SELECT 1 FROM rules WHERE id=?", (rule_id,)).fetchone()
+        if exists:
+            return False
+        self.put_rule(rule_id, severity, title, spec, enabled)
+        return True
+
+    def set_rule_enabled(self, rule_id: str, enabled: bool) -> None:
+        self.conn.execute("UPDATE rules SET enabled=?, updated=? WHERE id=?",
+                          (int(enabled), int(time.time()), rule_id))
+
+    def delete_rule(self, rule_id: str) -> None:
+        self.conn.execute("DELETE FROM rules WHERE id=?", (rule_id,))
+
     def rules(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             "SELECT id, severity, title, spec FROM rules WHERE enabled=1"

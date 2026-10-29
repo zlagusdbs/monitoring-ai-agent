@@ -339,6 +339,28 @@ async def run_action(req: dict = Body(...)) -> dict:
     return {"ok": result["outcome"] in ("sent", "dry_only"), **result}
 
 
+@app.post("/api/rules/{rule_id}/enabled")
+def set_rule_enabled(rule_id: str, req: dict = Body(...)) -> dict:
+    store = _write_db()
+    try:
+        store.set_rule_enabled(rule_id, bool(req.get("enabled")))
+        store.checkpoint()
+    finally:
+        store.close()
+    return {"ok": True, "id": rule_id}
+
+
+@app.delete("/api/rules/{rule_id}")
+def delete_rule(rule_id: str) -> dict:
+    store = _write_db()
+    try:
+        store.delete_rule(rule_id)
+        store.checkpoint()
+    finally:
+        store.close()
+    return {"ok": True, "id": rule_id}
+
+
 @app.post("/api/throttle")
 def do_throttle(req: dict = Body(...)) -> dict:
     """사람이 화면에서 누를 때만 호출된다. 에이전트는 이 경로에 닿지 못한다."""
