@@ -1,5 +1,5 @@
 import { Report as ReportData } from "../api";
-import { hhmmss } from "../ui";
+import { hm } from "../ui";
 
 type Row =
   | { kind: "finding"; ts: number; ruleId: string; detail: string }
@@ -37,7 +37,7 @@ export function Report({ data }: { data: ReportData | null }) {
     <>
       {rows.map((row, i) => (
         <div className="ev" key={i}>
-          <span className="w">{hhmmss(row.ts)}</span>{" "}
+          <span className="w">{hm(row.ts)}</span>{" "}
           {row.kind === "finding" ? (
             <>
               <b>{row.ruleId}</b> 발동

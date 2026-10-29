@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Check, Settings, api } from "../api";
-import { hhmmss } from "../ui";
+import { hm } from "../ui";
 
 const EVERY = [10, 30, 60];
 
@@ -102,7 +102,7 @@ export function Checklist({ tick, settings, onSettings }: Props) {
               <span className={`badge ${BADGE[c.state]?.cls ?? "skipped"}`}>
                 {BADGE[c.state]?.label ?? c.state}
               </span>
-              <span className="w">{c.checked_at ? `${hhmmss(c.checked_at)} 확인` : "확인 전"}</span>
+              <span className="w">{c.checked_at ? `${hm(c.checked_at)} 확인` : "확인 전"}</span>
               <span className="chk-btns">
                 <button className="rbtn" disabled={busy === c.name} onClick={() => run(c.name)}>
                   {busy === c.name ? "확인 중…" : "다시"}

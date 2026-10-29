@@ -42,8 +42,13 @@ export function usePoll<T>(load: () => Promise<T>, ms: number, bump = 0): T | nu
   return value;
 }
 
-export const hhmmss = (ts: number) =>
-  new Date(ts * 1000).toLocaleTimeString("ko-KR", { hour12: false });
+/** 화면의 시각은 전부 분 단위로 맞춘다. 초까지는 보지 않는다. */
+export const hm = (ts: number) =>
+  new Date(ts * 1000).toLocaleTimeString("ko-KR", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export const num = (v: number | null | undefined, digits = 1) =>
   v == null ? "-" : v.toLocaleString(undefined, { maximumFractionDigits: digits });

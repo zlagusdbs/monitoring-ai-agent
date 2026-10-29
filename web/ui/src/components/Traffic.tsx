@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 import { Line as Series, Status, api } from "../api";
-import { hhmmss, mem, ms, num } from "../ui";
+import { hm, mem, ms, num } from "../ui";
 
 const RANGES = [
   { label: "30분", minutes: 30 },
@@ -99,7 +99,7 @@ function Chart({
             <CartesianGrid stroke="var(--line)" vertical={false} />
             <XAxis
               dataKey="ts"
-              tickFormatter={(t) => hhmmss(t).slice(0, 5)}
+              tickFormatter={(t) => hm(t)}
               stroke="var(--dim)"
               fontSize={10}
               minTickGap={40}
@@ -120,7 +120,7 @@ function Chart({
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelFormatter={(t) => hhmmss(Number(t))}
+              labelFormatter={(t) => hm(Number(t))}
               formatter={(v, n) => [`${num(Number(v))} ${unit}`, String(n)]}
             />
             <Legend verticalAlign="top" height={18} iconSize={8} wrapperStyle={{ fontSize: 11 }} />
