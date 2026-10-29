@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Rule, Settings, Status, api } from "../api";
+import { Modal } from "./Modal";
 import { RuleDetail } from "./RuleDetail";
 
 type Throttle = { type?: string; uri?: string; rate?: number; ttl_minutes?: number };
@@ -56,6 +57,7 @@ export function Rules({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const rules = [...status.rules].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9));
+  const shown = rules.find((r) => r.id === open) ?? null;
   if (rules.length === 0) return <div className="foot">켜진 규칙이 없다</div>;
 
   return (
@@ -92,11 +94,26 @@ export function Rules({
               지우기
             </button>
             <div className="d">{r.detail}</div>
-            {open === r.id && <RuleDetail rule={r} settings={settings} />}
             <ThrottleAction rule={r} />
           </span>
         </div>
       ))}
+
+      {shown && (
+        <Modal
+          title={
+            <>
+              {shown.title} <span className="d">· {shown.severity}</span>
+              <div className="d" style={{ fontSize: 12 }}>
+                <code>{shown.id}</code> · 지금 <b>{shown.state}</b>
+              </div>
+            </>
+          }
+          onClose={() => setOpen(null)}
+        >
+          <RuleDetail rule={shown} settings={settings} />
+        </Modal>
+      )}
     </>
   );
 }

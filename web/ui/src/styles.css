@@ -44,6 +44,26 @@ h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--dim); text
 }
 .help:hover::after { display: block; }
 
+.overlay {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .38); padding: 24px;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  width: min(680px, 100%); max-height: 82vh; display: flex; flex-direction: column;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .3);
+}
+.modal-h {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 13px 15px; border-bottom: 1px solid var(--line);
+}
+.modal-t { flex: 1; font-weight: 600; line-height: 1.45; }
+.modal-t .d { font-weight: 400; }
+.modal-h .rbtn { font-size: 14px; line-height: 1; padding: 3px 9px; }
+.modal-b { padding: 13px 15px; overflow: auto; }
+.modal-b .detail { margin-top: 0; border-left: 0; padding-left: 0; }
+.modal-b .detail dl { grid-template-columns: 86px 1fr; gap: 7px 12px; }
+
 .rule .t { cursor: pointer; }
 .rule .t:hover { text-decoration: underline dotted; color: var(--accent); }
 .detail { margin-top: 7px; border-left: 2px solid var(--line); padding: 2px 0 2px 9px; }
