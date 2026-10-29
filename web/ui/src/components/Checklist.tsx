@@ -5,6 +5,13 @@ import { hhmmss } from "../ui";
 
 const EVERY = [10, 30, 60];
 
+const BADGE: Record<string, { label: string; cls: string }> = {
+  ok: { label: "정상", cls: "ok" },
+  fail: { label: "이상", cls: "firing" },
+  unknown: { label: "미확인", cls: "skipped" },
+  pending: { label: "확인 중", cls: "skipped" },
+};
+
 type Props = {
   tick: number;
   settings: Settings | null;
@@ -80,8 +87,8 @@ export function Checklist({ tick, settings, onSettings }: Props) {
           <div className="chk" key={c.name}>
             <div className="chk-h">
               <b>{c.name}</b>
-              <span className={`badge ${c.state === "ok" ? "ok" : c.state === "pending" ? "skipped" : "firing"}`}>
-                {c.state}
+              <span className={`badge ${BADGE[c.state]?.cls ?? "skipped"}`}>
+                {BADGE[c.state]?.label ?? c.state}
               </span>
               <span className="w">{c.checked_at ? `${hhmmss(c.checked_at)} 확인` : "확인 전"}</span>
               <span className="chk-btns">

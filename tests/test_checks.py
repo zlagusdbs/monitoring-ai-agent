@@ -95,3 +95,38 @@ def test_never_checked_items_count_as_overdue(store):
     store.set_setting("checklist_auto", "on")
     store.put_check("new", "q")
     assert server._stale_check(store)["name"] == "new"
+
+
+def test_verdict_is_parsed_from_the_answer():
+    assert checks.parse_answer("FAIL | 3일 연속 0건") == ("fail", "3일 연속 0건")
+    assert checks.parse_answer("OK | 정상")[0] == "ok"
+    assert checks.parse_answer("UNKNOWN | 못 봄")[0] == "unknown"
+
+
+def test_bold_and_lowercase_verdicts_still_parse():
+    assert checks.parse_answer("**fail** | 0건")[0] == "fail"
+
+
+def test_answer_without_the_format_is_unknown():
+    state, summary = checks.parse_answer("마지막 실행은 어제였습니다")
+    assert state == "unknown" and summary.startswith("마지막")
+
+
+def test_empty_answer_is_unknown():
+    assert checks.parse_answer("")[0] == "unknown"
+
+
+def test_particle_after_an_ascii_name_is_dropped():
+    assert checks.resolve_name("indexer-coupon-all은", []) == "indexer-coupon-all"
+
+
+def test_existing_name_wins_over_stripping():
+    assert checks.resolve_name("indexer-coupon-all은", ["indexer-coupon-all"]) == "indexer-coupon-all"
+
+
+def test_pure_hangul_name_is_left_alone():
+    assert checks.resolve_name("쿠폰색인", []) == "쿠폰색인"
+
+
+def test_exact_name_is_unchanged():
+    assert checks.resolve_name("indexer-coupon-all", ["indexer-coupon-all"]) == "indexer-coupon-all"

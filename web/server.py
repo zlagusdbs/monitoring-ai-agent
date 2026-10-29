@@ -330,7 +330,7 @@ def get_settings() -> dict:
 
 
 async def _investigate(name: str, question: str) -> tuple[str, str]:
-    """에이전트에게 한 번 물어보고 답을 글로 받는다."""
+    """에이전트에게 한 번 물어보고 판정과 한 줄 요약을 받는다."""
     said: list[str] = []
     async with ClaudeSDKClient(options=OPTIONS) as client:
         await client.query(checks.prompt_for(name, question))
@@ -339,20 +339,20 @@ async def _investigate(name: str, question: str) -> tuple[str, str]:
                 for block in message.content:
                     if hasattr(block, "text") and block.text:
                         said.append(block.text)
-    answer = "\n".join(said).strip()
-    return ("ok", answer) if answer else ("failed", "에이전트가 답하지 않았다")
+    return checks.parse_answer("\n".join(said))
 
 
 async def run_check(name: str, question: str) -> dict:
     store = _write_db()
     try:
+        name = checks.resolve_name(name, [c["name"] for c in store.checks()])
         store.put_check(name, question)
         try:
             state, answer = await asyncio.wait_for(_investigate(name, question), 180)
         except asyncio.TimeoutError:
-            state, answer = "failed", "타임아웃 (180초)"
+            state, answer = "unknown", "타임아웃 (180초)"
         except Exception as e:  # 에이전트가 죽어도 항목은 남는다
-            state, answer = "failed", f"{type(e).__name__}: {e}"
+            state, answer = "unknown", f"{type(e).__name__}: {e}"
         store.set_check_result(name, state, answer)
     finally:
         store.close()
