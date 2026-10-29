@@ -9,3 +9,6 @@ ca-bundle.pem
 docs/superpowers/
 node_modules/
 web/static/
+
+# 화면에서 적는 지시문 — 사내 내용이 들어갈 수 있다
+skills/

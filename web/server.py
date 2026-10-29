@@ -29,6 +29,7 @@ import policy  # noqa: E402
 import throttling  # noqa: E402
 from collector.evaluator import evaluate  # noqa: E402
 from collector.store import Store  # noqa: E402
+import skills  # noqa: E402
 from web import checks, runner  # noqa: E402
 from agent import ops  # noqa: E402  커스텀 도구 4개가 들어 있는 in-process MCP 서버
 from claude_agent_sdk import (  # noqa: E402
@@ -59,7 +60,7 @@ async def _ask(candidate: dict) -> dict:
         f"최근 24시간 이 규칙의 조치 기록: {candidate['history']}\n\n"
         "읽기 전용 도구로 확인한 뒤 decide_action 을 정확히 한 번 호출해라."
     )
-    async with ClaudeSDKClient(options=OPTIONS) as client:
+    async with ClaudeSDKClient(options=_options()) as client:
         await client.query(prompt)
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
@@ -132,7 +133,12 @@ CHAT_SYSTEM = (
     "답변은 한국어로 한다."
 )
 
-OPTIONS = ClaudeAgentOptions(
+def _options() -> ClaudeAgentOptions:
+    """화면에서 적어 둔 지시문을 매번 다시 읽어 붙인다. 도구 목록은 그대로다."""
+    return ClaudeAgentOptions(**{**_BASE, "system_prompt": CHAT_SYSTEM + skills.as_prompt()})
+
+
+_BASE = dict(
     model="claude-opus-5-5",
     mcp_servers={"ops": ops},
     allowed_tools=[
@@ -148,7 +154,6 @@ OPTIONS = ClaudeAgentOptions(
     skills=[],
     permission_mode="dontAsk",
     max_budget_usd=2.0,
-    system_prompt=CHAT_SYSTEM,
 )
 
 
@@ -261,7 +266,7 @@ async def _as_message(text: str, images: list[dict]):
 async def chat(ws: WebSocket) -> None:
     await ws.accept()
     try:
-        async with ClaudeSDKClient(options=OPTIONS) as client:
+        async with ClaudeSDKClient(options=_options()) as client:
             while True:
                 raw = await ws.receive_text()
                 text, images = _unpack(raw)
@@ -383,7 +388,7 @@ def _next_tick_in(settings: dict) -> int:
 async def _investigate(name: str, question: str) -> tuple[str, str]:
     """에이전트에게 한 번 물어보고 판정과 한 줄 요약을 받는다."""
     said: list[str] = []
-    async with ClaudeSDKClient(options=OPTIONS) as client:
+    async with ClaudeSDKClient(options=_options()) as client:
         await client.query(checks.prompt_for(name, question))
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
@@ -408,6 +413,69 @@ async def run_check(name: str, question: str) -> dict:
     finally:
         store.close()
     return {"name": name, "state": state, "result": answer}
+
+
+@app.get("/api/skills")
+def list_skills() -> dict:
+    log = []
+    if _ready():
+        store = Store(DSN)
+        try:
+            log = store.skill_log()
+        finally:
+            store.close()
+    return {
+        "groups": [
+            {"id": "root", "head": "기본 지시 — 고칠 수 없다", "files": ["base"], "fixed": True},
+            *(
+                {"id": g, "head": skills.HEAD[g], "files": skills.names(g), "fixed": False}
+                for g in skills.GROUPS
+            ),
+        ],
+        "log": log,
+    }
+
+
+@app.get("/api/skills/{group}/{name}")
+def read_skill(group: str, name: str) -> dict:
+    if group == "root":
+        return {"ok": True, "group": group, "name": name, "body": CHAT_SYSTEM, "fixed": True}
+    body = skills.read(group, name)
+    if body is None:
+        return {"ok": False, "error": f"없는 글: {group}/{name}"}
+    return {"ok": True, "group": group, "name": name, "body": body, "fixed": False}
+
+
+@app.put("/api/skills/{group}/{name}")
+def write_skill(group: str, name: str, req: dict = Body(...)) -> dict:
+    if group == "root":
+        return {"ok": False, "error": "기본 지시는 화면에서 고칠 수 없다"}
+    body = str(req.get("body") or "")
+    why = skills.write(group, name, body)
+    if why:
+        return {"ok": False, "error": why}
+    _log_skill(f"{group}/{name}", "저장", len(body.encode("utf-8")))
+    return {"ok": True, "group": group, "name": name}
+
+
+@app.delete("/api/skills/{group}/{name}")
+def remove_skill(group: str, name: str) -> dict:
+    if group == "root":
+        return {"ok": False, "error": "기본 지시는 지울 수 없다"}
+    if not skills.delete(group, name):
+        return {"ok": False, "error": f"없는 글: {group}/{name}"}
+    _log_skill(f"{group}/{name}", "삭제", None)
+    return {"ok": True, "group": group, "name": name}
+
+
+def _log_skill(name: str, what: str, size: int | None) -> None:
+    if not _ready():
+        return
+    store = _write_db()
+    try:
+        store.put_skill_log(name, what, size)
+    finally:
+        store.close()
 
 
 @app.get("/api/checks")

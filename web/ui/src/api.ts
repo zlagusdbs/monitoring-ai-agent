@@ -50,6 +50,10 @@ export type Settings = Record<string, string | number | boolean> & {
   auto_next_in?: number;
 };
 
+export type SkillLog = { ts: number; name: string; what: string; bytes: number | null };
+
+export type SkillGroup = { id: string; head: string; files: string[]; fixed: boolean };
+
 export type Line = { labels: Labels; points: { ts: number; value: number }[] };
 
 export type Check = {
@@ -89,6 +93,15 @@ export const api = {
   addRule: (rule: unknown) => send("/api/rules", rule),
   throttle: (body: unknown) => send("/api/throttle", body),
   checks: () => get<{ checks: Check[] }>("/api/checks"),
+  skills: () => get<{ groups: SkillGroup[]; log: SkillLog[] }>("/api/skills"),
+  readSkill: (group: string, name: string) =>
+    get<{ ok: boolean; body?: string; fixed?: boolean; error?: string }>(
+      `/api/skills/${group}/${encodeURIComponent(name)}`,
+    ),
+  writeSkill: (group: string, name: string, body: string) =>
+    send(`/api/skills/${group}/${encodeURIComponent(name)}`, { body }, "PUT"),
+  deleteSkill: (group: string, name: string) =>
+    send(`/api/skills/${group}/${encodeURIComponent(name)}`, undefined, "DELETE"),
   runCheck: (name: string) => send(`/api/checks/${encodeURIComponent(name)}/run`),
   renameCheck: (name: string, next: string) =>
     send(`/api/checks/${encodeURIComponent(name)}/rename`, { name: next }),

@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS settings (
     updated BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS skill_log (
+    ts    BIGINT NOT NULL,
+    name  TEXT   NOT NULL,
+    what  TEXT   NOT NULL,
+    bytes INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_skill_log_ts ON skill_log(ts);
+
 CREATE TABLE IF NOT EXISTS checks (
     name       TEXT PRIMARY KEY,
     question   TEXT   NOT NULL,
@@ -211,6 +219,18 @@ class Store:
             " ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated=EXCLUDED.updated",
             (key, value, int(time.time())),
         )
+
+    def put_skill_log(self, name: str, what: str, size: int | None = None) -> None:
+        self.conn.execute(
+            "INSERT INTO skill_log (ts, name, what, bytes) VALUES (%s,%s,%s,%s)",
+            (int(time.time()), name, what, size),
+        )
+
+    def skill_log(self, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT ts, name, what, bytes FROM skill_log ORDER BY ts DESC LIMIT %s", (limit,)
+        ).fetchall()
+        return [{"ts": ts, "name": n, "what": w, "bytes": b} for ts, n, w, b in rows]
 
     def put_check(self, name: str, question: str) -> None:
         self.conn.execute(

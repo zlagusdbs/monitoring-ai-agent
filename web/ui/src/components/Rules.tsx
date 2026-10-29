@@ -109,6 +109,7 @@ export function Rules({
 
       {shown && (
         <Modal
+          id="rule"
           title={
             <>
               {shown.title} <span className="d">· {shown.severity}</span>

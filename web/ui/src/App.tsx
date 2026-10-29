@@ -6,7 +6,9 @@ import { Checklist } from "./components/Checklist";
 import { Clusters, IndexPanel } from "./components/Metrics";
 import { Report } from "./components/Report";
 import { Rules } from "./components/Rules";
+import { Modal } from "./components/Modal";
 import { Section } from "./components/Section";
+import { Settings } from "./components/Settings";
 import { StatusBar } from "./components/StatusBar";
 import { Traffic } from "./components/Traffic";
 import { mem, num, usePoll } from "./ui";
@@ -75,6 +77,7 @@ export default function App() {
   const splitter = useSplitter();
 
   const [plan, setPlan] = useState<string[]>([]);
+  const [setting, setSetting] = useState(false);
   const addPlan = useCallback((name: string) => setPlan((p) => [...p, `→ ${name}`]), []);
 
   const saveSettings = async (values: Record<string, string>) => {
@@ -86,7 +89,31 @@ export default function App() {
 
   return (
     <>
+      <div className="rail">
+        <button
+          className={`rail-btn${setting ? "" : " on"}`}
+          onClick={() => setSetting(false)}
+          title="Main board — 색인·API 현재 상태"
+        >
+          <span className="ico">▦</span>
+          <span className="lbl">board</span>
+        </button>
+        <button
+          className={`rail-btn gear${setting ? " on" : ""}`}
+          onClick={() => setSetting(true)}
+          title="설정 — 에이전트에게 줄 지시문"
+        >
+          <span className="ico">⚙</span>
+          <span className="lbl">설정</span>
+        </button>
+      </div>
+
       <div className="left">
+        <div className="page-h">
+          <b>Main board</b>
+          <span className="foot">색인·API 현재 상태와 규칙 판정</span>
+        </div>
+
         <StatusBar
           report={report}
           settings={settings}
@@ -144,6 +171,12 @@ export default function App() {
       <div className="split" ref={splitter} title="끌어서 폭 조절" />
 
       <Chat plan={plan} onTool={addPlan} onRuleSaved={refresh} />
+
+      {setting && (
+        <Modal id="setting" title="설정 — 에이전트 지시문" onClose={() => setSetting(false)}>
+          <Settings />
+        </Modal>
+      )}
     </>
   );
 }
