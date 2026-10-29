@@ -152,6 +152,25 @@ DD_APP_KEY = os.getenv("DD_APP_KEY", "")
 
 DD_QUERIES = policy.get("datadog_queries", {})
 
+# Datadog 의 지연 지표는 초 단위로 온다. 화면은 ms 로 보여 주므로 여기서 바꾼다.
+DD_SCALE = policy.get("datadog_scale", {})
+
+
+def scope_labels(scope: str) -> dict[str, str]:
+    """'resource_name:POST /a/b,service:svc' 를 라벨로 쪼갠다."""
+    if not scope or scope == "*":
+        return {}
+    out = {}
+    for part in scope.split(","):
+        key, sep, value = part.partition(":")
+        if sep:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def scaled(metric: str, value: float) -> float:
+    return round(value * DD_SCALE.get(metric, 1), 3)
+
 
 async def datadog(client: httpx.AsyncClient):
     if not (DD_API_KEY and DD_APP_KEY):
@@ -176,8 +195,8 @@ async def datadog(client: httpx.AsyncClient):
             out.append(
                 {
                     "metric": metric,
-                    "labels": {"scope": s.get("scope", "all")},
-                    "value": float(pts[-1][1]),
+                    "labels": scope_labels(s.get("scope", "")),
+                    "value": scaled(metric, float(pts[-1][1])),
                     "text": None,
                 }
             )

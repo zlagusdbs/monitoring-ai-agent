@@ -92,6 +92,15 @@ button:disabled{opacity:.45;cursor:default}
 .todo{margin-top:8px;border-top:1px solid var(--line);padding-top:7px;font-size:12.5px}
 .rbtn{padding:3px 8px;font-size:11px;background:transparent;color:var(--dim);
       border:1px solid var(--line);margin-left:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:right;font-weight:600;color:var(--dim);font-size:11px;
+        padding:4px 6px;border-bottom:1px solid var(--line)}
+.tbl th:first-child{text-align:left}
+.tbl td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);
+        font-family:var(--mono);font-size:11.5px}
+.tbl td.ep{text-align:left;font-family:inherit;font-size:12.5px;word-break:break-all}
+.tbl td.bad{color:var(--red);font-weight:600}
+.tbl tr:last-child td{border-bottom:0}
 </style>
 </head>
 <body>
@@ -102,8 +111,8 @@ button:disabled{opacity:.45;cursor:default}
   <div class="panel">
     <div class="sec" data-k="cl"><h2 class="hd">클러스터</h2><div class="bd" id="cl"></div></div>
     <div class="sec" data-k="ix"><h2 class="hd">색인</h2><div class="bd" id="ix"></div></div>
-    <div class="sec" data-k="tf"><h2 class="hd">트래픽</h2>
-      <div class="bd cards" id="tf"></div></div>
+    <div class="sec" data-k="tf"><h2 class="hd">트래픽 · 지연</h2>
+      <div class="bd" id="tf"></div></div>
   </div>
   <div class="panel sec" data-k="rules"><h2 class="hd">규칙 판정</h2>
     <div class="bd" id="rules" style="height:240px"></div></div>
@@ -192,10 +201,44 @@ async function refresh(){
   if(tp.length) ixRows.push(row("토픽", tp));
   $("#ix").innerHTML=ixRows.join("");
 
-  const tf=d.metrics.price_api_rps||[];
-  $("#tf").innerHTML = tf.length
-    ? tf.map(m=>card(["API 요청", num(m,1)+" req/s"])).join("")
-    : card(["Datadog", "미연결 (DD_API_KEY 필요)"]);
+  const one=m=>(d.metrics[m]||[])[0];
+  const ms=m=>{const x=one(m); return x&&x.value!=null?x.value.toLocaleString(undefined,
+    {maximumFractionDigits:1})+" ms":"-";};
+  const rps=one("api_rps");
+  const hasDD=(d.metrics.api_rps||d.metrics.api_latency_p99_ms||[]).length>0;
+
+  if(!hasDD){
+    $("#tf").innerHTML=card(["Datadog", "미연결 (DD_API_KEY 필요)"]);
+  }else{
+    const ep={};
+    const put=(metric,key)=>(d.metrics[metric]||[]).forEach(m=>{
+      const r=m.labels.resource_name; if(!r) return;
+      (ep[r]=ep[r]||{})[key]=m.value;
+    });
+    put("endpoint_rps","rps");
+    put("endpoint_latency_p99_ms","p99");
+    put("endpoint_latency_max_ms","max");
+    (d.metrics.endpoint_status_rps||[]).forEach(m=>{
+      const r=m.labels.resource_name, c=String(m.labels["http.status_code"]||"");
+      if(!r||!c.startsWith("5")) return;
+      const e=ep[r]=ep[r]||{}; e.e5xx=(e.e5xx||0)+(m.value||0);
+    });
+    const fmt=(v,u)=>v==null?"-":v.toLocaleString(undefined,{maximumFractionDigits:1})+u;
+    const rows=Object.entries(ep)
+      .sort((a,b)=>(b[1].rps||0)-(a[1].rps||0))
+      .map(([name,e])=>`<tr><td class="ep">${name}</td><td>${fmt(e.rps,"")}</td>
+        <td>${fmt(e.p99," ms")}</td><td>${fmt(e.max," ms")}</td>
+        <td class="${e.e5xx?"bad":""}">${fmt(e.e5xx||0,"")}</td></tr>`).join("");
+    $("#tf").innerHTML=
+      `<div class="cards" style="margin-bottom:9px">
+         ${card(["요청", rps&&rps.value!=null?num(rps,1)+" req/s":"-"])}
+         ${card(["p50", ms("api_latency_p50_ms")])}
+         ${card(["p99", ms("api_latency_p99_ms")])}
+         ${card(["max", ms("api_latency_max_ms")])}
+       </div>`
+      + (rows?`<table class="tbl"><thead><tr><th>엔드포인트</th><th>요청/s</th>
+         <th>p99</th><th>max</th><th>5xx</th></tr></thead><tbody>${rows}</tbody></table>`:"");
+  }
 
   const order={firing:0,skipped:1,ok:2};
   $("#rules").innerHTML=(d.rules||[])

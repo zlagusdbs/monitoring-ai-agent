@@ -182,17 +182,13 @@ def status() -> dict:
     # seller)의 옛 샘플이 "현재값"처럼 남지 않게 하려는 것이다.
     last = c.execute("SELECT MAX(ts) FROM samples").fetchone()[0] or 0
     metrics: dict[str, list] = {}
-    for metric in (
-        "cluster_status", "alias_index", "index_docs", "topic_offset_latest",
-        "es_cpu_percent", "es_heap_percent", "es_search_qps", "price_api_rps",
-    ):
-        rows = c.execute(
-            "SELECT labels, value, text, ts FROM samples WHERE metric=%s AND ts=%s",
-            (metric, last),
-        ).fetchall()
-        metrics[metric] = [
-            {"labels": l, "value": v, "text": t, "ts": ts} for l, v, t, ts in rows
-        ]
+    rows = c.execute(
+        "SELECT metric, labels, value, text, ts FROM samples WHERE ts=%s", (last,)
+    ).fetchall()
+    for metric, l, v, t, ts in rows:
+        metrics.setdefault(metric, []).append(
+            {"labels": l, "value": v, "text": t, "ts": ts}
+        )
     total = c.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
     c.close()
     return {

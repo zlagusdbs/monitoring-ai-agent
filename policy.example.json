@@ -32,7 +32,9 @@
     "es_search_qps": "sum by (cluster) (rate(METRIC[5m]))"
   },
   "datadog_queries": {
-    "api_rps": "sum:METRIC{env:ENV,service:SERVICE}.as_rate()"
+    "api_rps": "sum:METRIC.hits{env:ENV,service:SERVICE}.as_rate()",
+    "api_latency_p99_ms": "p99:METRIC{env:ENV,service:SERVICE}",
+    "endpoint_latency_p99_ms": "p99:METRIC{env:ENV,service:SERVICE} by {resource_name}"
   },
   "throttle": {
     "path": "/admin/throttling",
@@ -55,5 +57,8 @@
     "pod_allowed": {
       "POD-OR-DEPLOYMENT-NAME": "재기동해도 되는 이유"
     }
+  },
+  "datadog_scale": {
+    "_ms 로 끝나는 지표는 초 → ms": 1000
   }
 }
