@@ -301,6 +301,29 @@ def get_settings() -> dict:
     return out
 
 
+@app.get("/api/series")
+def series(metric: str, minutes: int = 120) -> dict:
+    """그래프용 시계열. labels 조합마다 한 줄로 묶어 돌려준다."""
+    if not _ready():
+        return {"metric": metric, "lines": []}
+    since = int(time.time()) - max(1, minutes) * 60
+    store = Store(DSN)
+    try:
+        rows = store.conn.execute(
+            "SELECT ts, labels, value FROM samples"
+            " WHERE metric=%s AND ts>=%s AND value IS NOT NULL ORDER BY ts",
+            (metric, since),
+        ).fetchall()
+    finally:
+        store.close()
+    lines: dict[str, dict] = {}
+    for ts, labels, value in rows:
+        key = json.dumps(labels, sort_keys=True, ensure_ascii=False)
+        line = lines.setdefault(key, {"labels": labels, "points": []})
+        line["points"].append({"ts": ts, "value": value})
+    return {"metric": metric, "lines": list(lines.values())}
+
+
 @app.post("/api/settings")
 def set_settings(values: dict = Body(...)) -> dict:
     store = _write_db()

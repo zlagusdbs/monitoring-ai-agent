@@ -7,3 +7,5 @@ data/
 policy.json
 ca-bundle.pem
 docs/superpowers/
+node_modules/
+web/static/
