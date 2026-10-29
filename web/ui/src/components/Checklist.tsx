@@ -43,6 +43,14 @@ export function Checklist({ tick, settings, onSettings }: Props) {
     load();
   };
 
+  const rename = async (name: string) => {
+    const next = prompt("새 이름", name)?.trim();
+    if (!next || next === name) return;
+    const res = await api.renameCheck(name, next);
+    if (!res.ok) alert(res.error);
+    load();
+  };
+
   const remove = async (name: string) => {
     if (!confirm(`체크리스트에서 ${name} 을 지웁니다. 진행할까요?`)) return;
     await api.deleteCheck(name);
@@ -81,12 +89,16 @@ export function Checklist({ tick, settings, onSettings }: Props) {
           채팅에 <code>/check 이름 무엇을 확인할지</code> 로 항목을 만든다.
           <br />
           예: <code>/check indexer-coupon-all 상태확인</code>
+          <br />
+          이름에 공백이 있으면 따옴표로: <code>/check "coupon index alias" 상태확인</code>
         </div>
       ) : (
         rows.map((c) => (
           <div className="chk" key={c.name}>
             <div className="chk-h">
-              <b>{c.name}</b>
+              <b className="chk-name" title="눌러서 이름을 바꾼다" onClick={() => rename(c.name)}>
+                {c.name}
+              </b>
               <span className={`badge ${BADGE[c.state]?.cls ?? "skipped"}`}>
                 {BADGE[c.state]?.label ?? c.state}
               </span>

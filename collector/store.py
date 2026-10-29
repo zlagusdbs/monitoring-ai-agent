@@ -236,6 +236,14 @@ class Store:
             for n, q, r, s, at, c in rows
         ]
 
+    def rename_check(self, name: str, new_name: str) -> bool:
+        cur = self.conn.execute(
+            "UPDATE checks SET name=%s WHERE name=%s AND NOT EXISTS"
+            " (SELECT 1 FROM checks WHERE name=%s)",
+            (new_name, name, new_name),
+        )
+        return cur.rowcount > 0
+
     def delete_check(self, name: str) -> None:
         self.conn.execute("DELETE FROM checks WHERE name=%s", (name,))
 

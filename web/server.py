@@ -384,6 +384,20 @@ async def rerun_check(name: str) -> dict:
     return {"ok": result["state"] == "ok", **result}
 
 
+@app.post("/api/checks/{name}/rename")
+def rename_check(name: str, req: dict = Body(...)) -> dict:
+    new_name = (req.get("name") or "").strip()
+    if not new_name:
+        return {"ok": False, "error": "새 이름이 비어 있다"}
+    store = _write_db()
+    try:
+        ok = store.rename_check(name, new_name)
+    finally:
+        store.close()
+    return {"ok": ok, "name": new_name} if ok else {
+        "ok": False, "error": f"이미 있는 이름이거나 없는 항목: {new_name}"}
+
+
 @app.delete("/api/checks/{name}")
 def remove_check(name: str) -> dict:
     store = _write_db()

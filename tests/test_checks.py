@@ -130,3 +130,45 @@ def test_pure_hangul_name_is_left_alone():
 
 def test_exact_name_is_unchanged():
     assert checks.resolve_name("indexer-coupon-all", ["indexer-coupon-all"]) == "indexer-coupon-all"
+
+
+def test_quoted_name_keeps_spaces():
+    assert checks.parse_command('/check "coupon index alias" 상태 확인') == (
+        "coupon index alias",
+        "상태 확인",
+    )
+
+
+def test_single_quotes_work_too():
+    name, _ = checks.parse_command("/check 'a b' q")
+    assert name == "a b"
+
+
+def test_unquoted_name_is_still_one_word():
+    assert checks.parse_command("/check abc 상태 확인")[0] == "abc"
+
+
+def test_rename_moves_the_row(store):
+    store.put_check("Active", "q")
+    store.set_check_result("Active", "fail", "r")
+    assert store.rename_check("Active", "coupon index alias") is True
+    row = store.checks()[0]
+    assert row["name"] == "coupon index alias" and row["result"] == "r"
+
+
+def test_rename_refuses_an_existing_name(store):
+    store.put_check("a", "q")
+    store.put_check("b", "q")
+    assert store.rename_check("a", "b") is False
+    assert {c["name"] for c in store.checks()} == {"a", "b"}
+
+
+def test_rename_endpoint(client, store):
+    store.put_check("a", "q")
+    assert client.post("/api/checks/a/rename", json={"name": "b"}).json()["ok"] is True
+    assert client.get("/api/checks").json()["checks"][0]["name"] == "b"
+
+
+def test_rename_endpoint_rejects_empty(client, store):
+    store.put_check("a", "q")
+    assert client.post("/api/checks/a/rename", json={"name": "  "}).json()["ok"] is False

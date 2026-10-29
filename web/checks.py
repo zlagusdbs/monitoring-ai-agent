@@ -2,7 +2,11 @@
 
 import re
 
-COMMAND = re.compile(r"^/check\s+(?P<name>\S+)\s*(?P<question>.*)$", re.DOTALL)
+# 이름에 공백이 있으면 따옴표로 묶는다: /check "coupon index alias" 상태 확인
+COMMAND = re.compile(
+    r"""^/check\s+(?:"(?P<quoted>[^"]+)"|'(?P<quoted2>[^']+)'|(?P<name>\S+))\s*(?P<question>.*)$""",
+    re.DOTALL,
+)
 
 DEFAULT_QUESTION = "상태 확인"
 
@@ -31,9 +35,9 @@ def parse_command(text: str) -> tuple[str, str] | None:
     m = COMMAND.match(text.strip())
     if not m:
         return None
-    name = m.group("name")
+    name = m.group("quoted") or m.group("quoted2") or m.group("name")
     question = m.group("question").strip() or DEFAULT_QUESTION
-    return name, question
+    return name.strip(), question
 
 
 HANGUL_TAIL = re.compile(r"[가-힣]+$")

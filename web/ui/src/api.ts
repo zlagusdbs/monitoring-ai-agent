@@ -86,5 +86,7 @@ export const api = {
   throttle: (body: unknown) => send("/api/throttle", body),
   checks: () => get<{ checks: Check[] }>("/api/checks"),
   runCheck: (name: string) => send(`/api/checks/${encodeURIComponent(name)}/run`),
+  renameCheck: (name: string, next: string) =>
+    send(`/api/checks/${encodeURIComponent(name)}/rename`, { name: next }),
   deleteCheck: (name: string) => send(`/api/checks/${encodeURIComponent(name)}`, undefined, "DELETE"),
 };
