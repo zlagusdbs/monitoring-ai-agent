@@ -138,6 +138,13 @@ async def monitor_series(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"{len(rows)}개 표본\n" + "\n".join(lines)}]}
 
 
+# 규칙에 쓸 수 있는 지표는 수집하는 것이 전부다. 목록을 손으로 적지 않는다.
+METRICS = [
+    "cluster_status", "alias_index", "index_docs", "topic_offset_latest",
+    *policy.get("prometheus_queries", {}),
+    *policy.get("datadog_queries", {}),
+]
+
 CHECK_TYPES = {
     "topic_offset_zero": "오늘자 full 색인 토픽에 produce 가 0건인지. 필드: topic_prefix "
                          "(예 'indexed1_<접두사>-'). 날짜는 평가 시점에 붙는다.",
@@ -147,8 +154,7 @@ CHECK_TYPES = {
                       "필드: topic (전체 이름), window_min (정수, 분).",
     "metric_threshold": "숫자 지표를 임계값과 비교. 필드: metric, op ('>'|'<'|'=='), "
                         "value (숫자), labels (선택, 예 {'cluster':'<클러스터명>'}). "
-                        "쓸 수 있는 metric: index_docs, topic_offset_latest 와 "
-                        "policy.json 에 정의된 지표들.",
+                        "쓸 수 있는 metric: " + ", ".join(METRICS) + ".",
 }
 GUARD_TYPES = {
     "after_hour": "지정한 시(0-23) 이전이면 평가를 건너뛴다. 필드: hour.",
@@ -247,11 +253,38 @@ async def decide_action(args: dict[str, Any]) -> dict[str, Any]:
         f"{action.id} 에 대해 {verdict} 로 판단했다. 실행과 기록은 서버가 한다."}]}
 
 
+@tool(
+    "throttle_preview",
+    "요청 차단(throttling)을 걸 때 보낼 명령과 되돌리는 명령을 만들어 준다. "
+    "네트워크를 쓰지 않는다 — 문자열만 만든다. 켤 수 없는 uri 는 사유와 함께 거절한다.\n"
+    "rate 는 0~100(%), ttl_minutes 는 1~" + str(throttling.MAX_TTL_MIN) + ".\n"
+    "사용자가 '차단 명령을 달라'거나 'body 를 알려 달라'고 하면 이 도구를 쓴다. "
+    "주소나 body 를 직접 지어내지 마라.",
+    {"uri": str, "rate": int, "ttl_minutes": int},
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def throttle_preview(args: dict[str, Any]) -> dict[str, Any]:
+    uri = args.get("uri", "")
+    rate = int(args.get("rate", 100))
+    ttl = int(args.get("ttl_minutes", 0))
+    why = throttling.validate(uri, rate, ttl)
+    if why:
+        return {"content": [{"type": "text", "text": f"쓸 수 없다 — {why}"}]}
+    text = (
+        f"엔드포인트: POST {throttling.BASE}{throttling.PATH}\n"
+        f"본문: {json.dumps(throttling.body(uri, rate, ttl), ensure_ascii=False)}\n\n"
+        f"거는 명령:\n{throttling.curl(uri, rate, ttl)}\n\n"
+        f"되돌리는 명령:\n{throttling.revert_curl(uri)}\n\n"
+        f"{ttl}분이 지나면 자동으로 풀린다."
+    )
+    return {"content": [{"type": "text", "text": text}]}
+
+
 ops = create_sdk_mcp_server(
     name="ops",
     version="2.0.0",
     tools=[monitor_status, monitor_series, prom_query, admin_get, propose_rule,
-           decide_action],
+           decide_action, throttle_preview],
 )
 
 # 에이전트를 내 개인 환경에서 격리한다. 이걸 빼면 ~/.claude 의 규칙·스킬을
@@ -266,6 +299,7 @@ OPTIONS = ClaudeAgentOptions(
         "mcp__ops__admin_get",
         "mcp__ops__propose_rule",
         "mcp__ops__decide_action",
+        "mcp__ops__throttle_preview",
     ],
     tools=[],                    # 내장 도구 전부 끔 (Skill, ToolSearch 포함)
     setting_sources=[],          # ~/.claude 설정·CLAUDE.md 를 읽지 않음

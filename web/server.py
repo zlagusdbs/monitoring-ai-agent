@@ -151,6 +151,7 @@ OPTIONS = ClaudeAgentOptions(
         "mcp__ops__monitor_series",
         "mcp__ops__prom_query",
         "mcp__ops__admin_get",
+        "mcp__ops__throttle_preview",
     ],
     tools=[],
     setting_sources=[],
