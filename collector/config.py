@@ -17,4 +17,4 @@ STATIC_TOPICS = policy.get("targets.static_topics", [])
 TOPIC_VERSION = policy.get("targets.topic_version", "1")
 
 INTERVAL_SEC = int(os.getenv("MON_INTERVAL_SEC", "300"))
-DB_PATH = os.getenv("MON_DB", "/data/monitor.db")
+DSN = os.getenv("MON_DSN", "postgresql://monitor:monitor@postgres:5432/monitor")

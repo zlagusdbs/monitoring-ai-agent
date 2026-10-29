@@ -1,19 +1,43 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: monitor-postgres
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      POSTGRES_DB: monitor
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-monitor}"
+    ports:
+      # 호스트의 웹 서버와 에이전트가 붙는다. 바깥으로는 열지 않는다.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitor -d monitor"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   collector:
     build: .
     container_name: monitor-collector
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       TZ: Asia/Seoul
       MON_INTERVAL_SEC: "300"
+      MON_DSN: "postgresql://monitor:${POSTGRES_PASSWORD:-monitor}@postgres:5432/monitor"
       # Datadog 트래픽은 키가 있어야 붙는다. 없으면 수집을 건너뛴다.
       DD_SITE: "${DD_SITE:-datadoghq.com}"
       DD_API_KEY: "${DD_API_KEY:-}"
       DD_APP_KEY: "${DD_APP_KEY:-}"
-      MON_DB: /data/monitor.db
     volumes:
-      # named volume 이 아니라 bind mount 다. 호스트의 에이전트가
-      # ./data/monitor.db 를 그대로 읽을 수 있어야 한다.
-      - ./data:/data
       # 사내 주소·정책은 레포에 올리지 않는다. 호스트 파일을 읽기 전용으로 붙인다.
       - ./policy.json:/app/policy.json:ro
+
+volumes:
+  pgdata:

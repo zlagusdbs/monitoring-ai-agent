@@ -1,37 +1,25 @@
-import sys
 import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
 from fastapi.testclient import TestClient
 
-from collector.store import Store
+from tests.conftest import dsn_for
 from web import server
 
 NOW = int(time.time())
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    db = tmp_path / "t.db"
-    s = Store(db)
-    s.checkpoint()
-    monkeypatch.setattr(server, "DB", db)
+def client(store, schema, monkeypatch):
+    monkeypatch.setattr(server, "DSN", dsn_for(schema))
+    monkeypatch.setattr(server, "DSN_RO", dsn_for(schema))
     monkeypatch.setattr(server, "STARTED", NOW)
-    return s
-
-
-@pytest.fixture
-def client(store):
     return TestClient(server.app)
 
 
 def test_report_is_scoped_to_session(client, store):
     store.put_action("r", "trigger_coupon_full", "hold", "오래된 것", ts=NOW - 100)
     store.put_action("r", "trigger_coupon_full", "hold", "이번 것", ts=NOW + 10)
-    store.checkpoint()
     items = client.get("/api/report").json()["items"]
     assert [i["reason"] for i in items] == ["이번 것"]
 
@@ -43,7 +31,6 @@ def test_action_endpoint_rejects_unknown_id(client, store):
 
 def test_action_endpoint_rechecks_limit(client, store):
     store.put_action("r", "trigger_coupon_full", "execute", "", outcome="sent", ts=NOW)
-    store.checkpoint()
     r = client.post("/api/action", json={"action_id": "trigger_coupon_full"}).json()
     assert r["ok"] is False and "상한" in r["error"]
 
@@ -60,6 +47,5 @@ def test_report_shows_action_written_in_same_request(client, store):
 
 def test_todo_mentions_unresolved_escalation(client, store):
     store.put_action("r1", "restart_indexer_pod", "escalate", "사람이 봐야 함", ts=NOW + 5)
-    store.checkpoint()
     todo = client.get("/api/report").json()["todo"]
     assert any("사람" in t for t in todo)

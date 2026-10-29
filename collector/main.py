@@ -44,10 +44,9 @@ async def collect_once(client: httpx.AsyncClient, store: Store) -> int:
 
 
 async def main() -> None:
-    store = Store(config.DB_PATH)
+    store = Store(config.DSN)
     n_rules = seed(store)
-    log.info("수집기 시작 — 주기 %ds, DB %s, 기본 규칙 %d개",
-             config.INTERVAL_SEC, config.DB_PATH, n_rules)
+    log.info("수집기 시작 — 주기 %ds, 기본 규칙 %d개", config.INTERVAL_SEC, n_rules)
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
             started = time.monotonic()
@@ -59,7 +58,6 @@ async def main() -> None:
                          n, store.count(), len(results), len(firing))
                 for r in firing:
                     log.warning("[%s] %s — %s", r["severity"].upper(), r["title"], r["detail"])
-                store.checkpoint()
             except Exception:
                 log.exception("수집 중 오류 — 다음 주기에 다시 시도한다")
             await asyncio.sleep(max(0, config.INTERVAL_SEC - (time.monotonic() - started)))

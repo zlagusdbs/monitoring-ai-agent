@@ -107,7 +107,6 @@ async def tick(
             log.info("건너뜀 %s — %s", rule["id"], skip)
             continue
         done.append(await _handle(store, rule, now_ts, ask, act))
-    store.checkpoint()
     return done
 
 

@@ -1,11 +1,10 @@
 """대시보드 + 채팅 + plan. 호스트에서 돈다 (구독 인증이 호스트에 묶여 있다).
 
-수집기·평가기는 Docker 안에서 돌며 data/monitor.db 에 쓰고, 여기서는 읽기만 한다.
+수집기·평가기는 Docker 안에서 돌며 Postgres 에 쓰고, 여기서는 주로 읽는다.
 """
 
 import json
 import os
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -15,6 +14,7 @@ import contextlib
 import logging
 
 import httpx
+import psycopg
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,7 +36,8 @@ from claude_agent_sdk import (  # noqa: E402
     ResultMessage,
 )
 
-DB = ROOT / "data" / "monitor.db"
+DSN = os.getenv("MON_DSN", "postgresql://monitor:monitor@127.0.0.1:5433/monitor")
+DSN_RO = os.getenv("MON_DSN_RO", "postgresql://monitor_ro:monitor_ro@127.0.0.1:5433/monitor")
 STARTED = int(time.time())
 TICK_SEC = 60
 
@@ -77,9 +78,7 @@ async def _loop() -> None:
     while True:
         await asyncio.sleep(TICK_SEC)
         try:
-            if not DB.exists():
-                continue
-            store = Store(DB)
+            store = Store(DSN)
             try:
                 if runner.setting(store, "auto_check") != "on":
                     continue
@@ -142,29 +141,41 @@ OPTIONS = ClaudeAgentOptions(
 )
 
 
-def _db() -> sqlite3.Connection:
-    return sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+def _db() -> psycopg.Connection:
+    return psycopg.connect(DSN_RO)
+
+
+def _write_db() -> Store:
+    return Store(DSN)
+
+
+def _ready() -> bool:
+    try:
+        _db().close()
+        return True
+    except psycopg.Error:
+        return False
 
 
 @app.get("/api/status")
 def status() -> dict:
-    if not DB.exists():
-        return {"ready": False, "reason": "수집기가 아직 DB 를 만들지 않았다"}
+    if not _ready():
+        return {"ready": False, "reason": "Postgres 에 붙지 못했다 — docker compose up -d"}
     c = _db()
     rules = []
     for rid, sev, title, spec in c.execute(
-        "SELECT id, severity, title, spec FROM rules WHERE enabled=1"
-    ):
+        "SELECT id, severity, title, spec FROM rules WHERE enabled ORDER BY id"
+    ).fetchall():
         row = c.execute(
-            "SELECT state, detail, ts FROM findings WHERE rule_id=? ORDER BY ts DESC LIMIT 1",
+            "SELECT state, detail, ts FROM findings WHERE rule_id=%s ORDER BY ts DESC LIMIT 1",
             (rid,),
         ).fetchone()
         state, detail, ts = row if row else ("-", "", 0)
         rules.append(
             {
                 "id": rid, "severity": sev, "title": title, "state": state,
-                "detail": detail, "ts": ts, "spec": json.loads(spec),
-                "action": json.loads(spec).get("action") or {},
+                "detail": detail, "ts": ts, "spec": spec,
+                "action": spec.get("action") or {},
             }
         )
     # 가장 최근 수집 주기의 값만 보여 준다. 수집을 멈춘 항목(예: 범위에서 빠진
@@ -176,11 +187,11 @@ def status() -> dict:
         "es_cpu_percent", "es_heap_percent", "es_search_qps", "price_api_rps",
     ):
         rows = c.execute(
-            "SELECT labels, value, text, ts FROM samples WHERE metric=? AND ts=?",
+            "SELECT labels, value, text, ts FROM samples WHERE metric=%s AND ts=%s",
             (metric, last),
         ).fetchall()
         metrics[metric] = [
-            {"labels": json.loads(l), "value": v, "text": t, "ts": ts} for l, v, t, ts in rows
+            {"labels": l, "value": v, "text": t, "ts": ts} for l, v, t, ts in rows
         ]
     total = c.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
     c.close()
@@ -233,32 +244,23 @@ def add_rule(rule: dict = Body(...)) -> dict:
         }
     except (KeyError, json.JSONDecodeError) as e:
         return {"ok": False, "error": str(e)}
-    conn = sqlite3.connect(DB)
-    conn.execute(
-        "INSERT OR REPLACE INTO rules (id, enabled, severity, title, spec, updated)"
-        " VALUES (?,1,?,?,?,?)",
-        (rule["rule_id"], rule.get("severity", "medium"), rule["title"],
-         json.dumps(spec, ensure_ascii=False), int(time.time())),
-    )
-    conn.commit()
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    conn.close()
+    store = _write_db()
+    try:
+        store.put_rule(rule["rule_id"], rule.get("severity", "medium"), rule["title"], spec)
+    finally:
+        store.close()
     return {"ok": True, "id": rule["rule_id"]}
-
-
-def _write_db() -> Store:
-    return Store(DB)
 
 
 @app.get("/api/report")
 def report() -> dict:
-    if not DB.exists():
+    if not _ready():
         return {"started": STARTED, "items": [], "todo": []}
-    store = Store(DB)
+    store = Store(DSN)
     try:
         items = store.actions_since(STARTED)
         findings = store.conn.execute(
-            "SELECT ts, rule_id, state, detail FROM findings WHERE ts >= ? ORDER BY ts",
+            "SELECT ts, rule_id, state, detail FROM findings WHERE ts >= %s ORDER BY ts",
             (STARTED,),
         ).fetchall()
     finally:
@@ -291,9 +293,9 @@ def _todo(items: list[dict]) -> list[str]:
 
 @app.get("/api/settings")
 def get_settings() -> dict:
-    if not DB.exists():
+    if not _ready():
         return dict(runner.DEFAULTS)
-    store = Store(DB)
+    store = Store(DSN)
     try:
         out = {k: runner.setting(store, k) for k in runner.DEFAULTS}
     finally:
@@ -309,7 +311,6 @@ def set_settings(values: dict = Body(...)) -> dict:
         for k, v in values.items():
             if k in runner.DEFAULTS:
                 store.set_setting(k, str(v))
-        store.checkpoint()
     finally:
         store.close()
     return {"ok": True}
@@ -333,7 +334,6 @@ async def run_action(req: dict = Body(...)) -> dict:
                          req.get("reason") or "화면에서 사람이 실행", params=params,
                          outcome=result["outcome"], detail=result["detail"],
                          revert=result.get("revert"), ts=now)
-        store.checkpoint()
     finally:
         store.close()
     return {"ok": result["outcome"] in ("sent", "dry_only"), **result}
@@ -344,7 +344,6 @@ def set_rule_enabled(rule_id: str, req: dict = Body(...)) -> dict:
     store = _write_db()
     try:
         store.set_rule_enabled(rule_id, bool(req.get("enabled")))
-        store.checkpoint()
     finally:
         store.close()
     return {"ok": True, "id": rule_id}
@@ -355,7 +354,6 @@ def delete_rule(rule_id: str) -> dict:
     store = _write_db()
     try:
         store.delete_rule(rule_id)
-        store.checkpoint()
     finally:
         store.close()
     return {"ok": True, "id": rule_id}

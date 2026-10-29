@@ -18,7 +18,7 @@
 
 import asyncio
 import json
-import sqlite3
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -26,6 +26,7 @@ from typing import Any
 import throttling
 
 import httpx
+import psycopg
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -41,7 +42,7 @@ import policy
 
 PROM = policy.get("endpoints.prometheus", "")
 ADMIN = policy.get("endpoints.admin", "")
-DB = Path(__file__).parent / "data" / "monitor.db"
+DSN_RO = os.getenv("MON_DSN_RO", "postgresql://monitor_ro:monitor_ro@127.0.0.1:5433/monitor")
 
 
 @tool(
@@ -72,9 +73,9 @@ async def admin_get(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"HTTP {r.status_code}\n{r.text[:4000]}"}]}
 
 
-def _db() -> sqlite3.Connection:
-    """수집기가 쓰는 DB 를 읽기 전용으로 연다. 쓰기는 절대 하지 않는다."""
-    return sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+def _db() -> psycopg.Connection:
+    """수집기가 쓰는 DB 를 읽기 전용 역할로 연다. 쓰기는 절대 하지 않는다."""
+    return psycopg.connect(DSN_RO)
 
 
 @tool(
@@ -87,9 +88,10 @@ def _db() -> sqlite3.Connection:
 async def monitor_status(args: dict[str, Any]) -> dict[str, Any]:
     c = _db()
     out: list[str] = ["## 규칙 판정"]
-    for rid, sev, title in c.execute("SELECT id, severity, title FROM rules WHERE enabled=1"):
+    rules = c.execute("SELECT id, severity, title FROM rules WHERE enabled").fetchall()
+    for rid, sev, title in rules:
         row = c.execute(
-            "SELECT state, detail, ts FROM findings WHERE rule_id=? ORDER BY ts DESC LIMIT 1",
+            "SELECT state, detail, ts FROM findings WHERE rule_id=%s ORDER BY ts DESC LIMIT 1",
             (rid,),
         ).fetchone()
         state, detail, ts = row if row else ("-", "-", 0)
@@ -98,8 +100,8 @@ async def monitor_status(args: dict[str, Any]) -> dict[str, Any]:
     out.append("\n## 최신 관측값")
     for metric in ("cluster_status", "alias_index", "index_docs", "topic_offset_latest"):
         rows = c.execute(
-            """SELECT labels, value, text FROM samples s WHERE metric=? AND ts=(
-                   SELECT MAX(ts) FROM samples WHERE metric=s.metric AND labels=s.labels)""",
+            """SELECT DISTINCT ON (labels) labels, value, text FROM samples
+               WHERE metric=%s ORDER BY labels, ts DESC""",
             (metric,),
         ).fetchall()
         for labels, value, text in rows:
@@ -121,7 +123,7 @@ async def monitor_series(args: dict[str, Any]) -> dict[str, Any]:
     since = int(time.time()) - int(args["minutes"]) * 60
     c = _db()
     rows = c.execute(
-        "SELECT ts, labels, value, text FROM samples WHERE metric=? AND ts>=? ORDER BY ts",
+        "SELECT ts, labels, value, text FROM samples WHERE metric=%s AND ts>=%s ORDER BY ts",
         (args["metric"], since),
     ).fetchall()
     c.close()

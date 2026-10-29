@@ -18,11 +18,13 @@ start() {
     die "$PORT 포트를 이미 쓰고 있다. ./run.sh stop 먼저"
   fi
 
-  echo "[1/2] 수집기 + 평가기"
+  [ -f policy.json ] || die "policy.json 이 없다. cp policy.example.json policy.json 로 만들고 값을 채운다"
+
+  echo "[1/2] Postgres + 수집기 + 평가기"
   docker compose up -d --build
   echo
   echo "[2/2] 대시보드  ->  http://127.0.0.1:$PORT"
-  echo "      Ctrl+C 로 대시보드만 멈춘다. 수집기는 계속 돈다 (./run.sh stop 으로 정리)"
+  echo "      Ctrl+C 로 대시보드만 멈춘다. DB·수집기는 계속 돈다 (./run.sh stop 으로 정리)"
   echo
   exec "$PY" -m uvicorn web.server:app --host 127.0.0.1 --port "$PORT"
 }
@@ -30,21 +32,20 @@ start() {
 stop() {
   docker compose down 2>/dev/null || true
   pkill -f "uvicorn web.server" 2>/dev/null && echo "대시보드 종료" || true
-  echo "정리 완료. data/ 는 남겨 둔다"
+  echo "정리 완료. DB 볼륨(pgdata)은 남겨 둔다"
 }
 
 status() {
+  printf "DB       : "
+  docker exec monitor-postgres pg_isready -U monitor -d monitor 2>/dev/null || echo "내려감"
   printf "수집기   : "
   docker ps --filter name=monitor-collector --format '{{.Status}}' 2>/dev/null | grep . || echo "내려감"
   printf "대시보드 : "
   lsof -ti:"$PORT" >/dev/null 2>&1 && echo "http://127.0.0.1:$PORT" || echo "내려감"
-  printf "수집 DB  : "
-  [ -f data/monitor.db ] && "$PY" -c "
-import sqlite3,time
-c=sqlite3.connect('file:data/monitor.db?mode=ro',uri=True)
-n=c.execute('SELECT COUNT(*) FROM samples').fetchone()[0]
-t=c.execute('SELECT MAX(ts) FROM samples').fetchone()[0] or 0
-print(f'{n:,}행, 마지막 수집 {int(time.time())-t}초 전')" || echo "없음"
+  printf "수집 행수: "
+  docker exec monitor-postgres psql -U monitor -d monitor -tAc \
+    "SELECT COUNT(*) || '행, 마지막 수집 ' || (EXTRACT(EPOCH FROM now())::bigint - COALESCE(MAX(ts),0)) || '초 전' FROM samples" \
+    2>/dev/null || echo "조회 실패"
 }
 
 case "${1:-start}" in
