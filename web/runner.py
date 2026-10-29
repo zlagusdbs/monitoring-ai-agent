@@ -18,8 +18,6 @@ DEFAULTS = {
     "daily_max": "20",
     "wake_without_action": "off",
     "auto_every_min": "1",
-    "checklist_auto": "off",
-    "checklist_every_min": "30",
 }
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2}

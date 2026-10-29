@@ -86,7 +86,6 @@ async def _loop() -> None:
         try:
             store = Store(DSN)
             try:
-                stale = _stale_check(store)
                 every = int(runner.setting(store, "auto_every_min")) * 60
                 if (
                     runner.setting(store, "auto_check") == "on"
@@ -97,21 +96,8 @@ async def _loop() -> None:
                                       ask=_ask, act=_act)
             finally:
                 store.close()
-            # 한 주기에 한 건만 — 항목이 많아도 한꺼번에 몰리지 않는다.
-            if stale:
-                await run_check(stale["name"], stale["question"])
         except Exception:
             log.exception("자동 점검 중 오류 — 다음 주기에 다시 시도한다")
-
-
-def _stale_check(store: Store) -> dict | None:
-    """자동 갱신이 켜져 있을 때, 가장 오래된 항목 하나를 고른다."""
-    if runner.setting(store, "checklist_auto") != "on":
-        return None
-    every = int(runner.setting(store, "checklist_every_min")) * 60
-    cutoff = int(time.time()) - every
-    stale = [c for c in store.checks() if (c["checked_at"] or 0) < cutoff]
-    return min(stale, key=lambda c: c["checked_at"] or 0) if stale else None
 
 
 @contextlib.asynccontextmanager

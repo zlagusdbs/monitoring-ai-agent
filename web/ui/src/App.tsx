@@ -23,8 +23,7 @@ const CHECK_HELP = [
   "이름을 누르면 제목을 바꿀 수 있다",
   "",
   "판정은 에이전트가 낸다 — 정상 / 이상 / 미확인",
-  "[다시] 를 눌러야 다시 확인한다",
-  "자동 을 켜면 주기마다 한 건씩 스스로 확인한다",
+  "[다시] 를 눌러야 다시 확인한다 — 저절로 갱신되지 않는다",
   "",
   "항목은 DB 에 남아서 창을 닫았다 열어도 그대로다",
 ].join("\n");
@@ -97,7 +96,7 @@ export default function App() {
 
         <div className="panel">
           <Section id="chk" title="Check list" help={CHECK_HELP} height={190}>
-            <Checklist tick={tick} settings={settings} onSettings={saveSettings} />
+            <Checklist tick={tick} />
           </Section>
         </div>
 

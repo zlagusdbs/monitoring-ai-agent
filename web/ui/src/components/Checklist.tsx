@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { Check, Settings, api } from "../api";
+import { Check, api } from "../api";
 import { hm } from "../ui";
 
 const BADGE: Record<string, { label: string; cls: string }> = {
@@ -12,11 +12,9 @@ const BADGE: Record<string, { label: string; cls: string }> = {
 
 type Props = {
   tick: number;
-  settings: Settings | null;
-  onSettings: (values: Record<string, string>) => void;
 };
 
-export function Checklist({ tick, settings, onSettings }: Props) {
+export function Checklist({ tick }: Props) {
   const [rows, setRows] = useState<Check[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -55,21 +53,10 @@ export function Checklist({ tick, settings, onSettings }: Props) {
     load();
   };
 
-  const auto = settings?.checklist_auto === "on";
-
   return (
     <>
       <div className="chartbar">
         <span className="who">{rows.length}개</span>
-        <span className="ranges">
-          <button
-            className={`rbtn${auto ? " sel" : ""}`}
-            onClick={() => onSettings({ checklist_auto: auto ? "off" : "on" })}
-            title="켜면 30분마다 한 건씩 다시 확인한다"
-          >
-            자동 {auto ? "켬" : "끔"}
-          </button>
-        </span>
       </div>
 
       {rows.length === 0 ? (

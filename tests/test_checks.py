@@ -73,30 +73,6 @@ def test_checked_at_is_recorded(store):
     assert store.checks()[0]["created"] <= int(time.time())
 
 
-def test_stale_check_is_none_while_auto_is_off(store):
-    store.put_check("a", "q")
-    assert server._stale_check(store) is None
-
-
-def test_stale_check_picks_the_oldest_overdue_one(store):
-    store.set_setting("checklist_auto", "on")
-    store.set_setting("checklist_every_min", "30")
-    now = int(time.time())
-    store.put_check("fresh", "q")
-    store.set_check_result("fresh", "ok", "r", ts=now - 60)
-    store.put_check("old", "q")
-    store.set_check_result("old", "ok", "r", ts=now - 7200)
-    store.put_check("older", "q")
-    store.set_check_result("older", "ok", "r", ts=now - 9000)
-    assert server._stale_check(store)["name"] == "older"
-
-
-def test_never_checked_items_count_as_overdue(store):
-    store.set_setting("checklist_auto", "on")
-    store.put_check("new", "q")
-    assert server._stale_check(store)["name"] == "new"
-
-
 def test_verdict_is_parsed_from_the_answer():
     assert checks.parse_answer("FAIL | 3일 연속 0건") == ("fail", "3일 연속 0건")
     assert checks.parse_answer("OK | 정상")[0] == "ok"
