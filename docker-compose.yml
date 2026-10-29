@@ -1,0 +1,19 @@
+services:
+  collector:
+    build: .
+    container_name: monitor-collector
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      MON_INTERVAL_SEC: "300"
+      # Datadog 트래픽은 키가 있어야 붙는다. 없으면 수집을 건너뛴다.
+      DD_SITE: "${DD_SITE:-datadoghq.com}"
+      DD_API_KEY: "${DD_API_KEY:-}"
+      DD_APP_KEY: "${DD_APP_KEY:-}"
+      MON_DB: /data/monitor.db
+    volumes:
+      # named volume 이 아니라 bind mount 다. 호스트의 에이전트가
+      # ./data/monitor.db 를 그대로 읽을 수 있어야 한다.
+      - ./data:/data
+      # 사내 주소·정책은 레포에 올리지 않는다. 호스트 파일을 읽기 전용으로 붙인다.
+      - ./policy.json:/app/policy.json:ro
