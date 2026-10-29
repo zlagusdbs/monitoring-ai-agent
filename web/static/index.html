@@ -15,14 +15,24 @@
         --red:#f09595;--amber:#efa027;--green:#97c459;--accent:#85b7eb;}
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);
+body{margin:0;background:var(--bg);color:var(--txt);--chatw:420px;
      font:14px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;height:100vh;
-     display:grid;grid-template-columns:1fr 420px;gap:10px;padding:10px}
-.left{display:grid;grid-template-rows:auto auto auto 1fr auto;gap:10px;min-height:0}
+     display:grid;grid-template-columns:1fr 7px var(--chatw);gap:7px;padding:10px}
+.left{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto;padding-right:3px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-       padding:12px 14px;min-height:0;overflow:auto}
+       padding:12px 14px;min-height:0;flex:none}
 h2{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--dim);
    text-transform:uppercase;letter-spacing:.06em}
+.hd{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+.hd::before{content:"\25BE";font-size:9px;line-height:1;transition:transform .12s}
+.sec.closed .hd::before{transform:rotate(-90deg)}
+.sec.closed .hd{margin-bottom:0}
+.sec.closed .bd{display:none}
+.bd{overflow:auto;resize:vertical;min-height:34px}
+.sec + .sec{margin-top:12px}
+.split{align-self:stretch;cursor:col-resize;border-radius:4px;background:var(--line);
+       opacity:.5}
+.split:hover,.split.on{opacity:1;background:var(--accent)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .row{display:flex;gap:8px;align-items:stretch;margin-bottom:8px}
 .row:last-child{margin-bottom:0}
@@ -40,6 +50,7 @@ h2{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--dim);
 .rule .t{font-weight:500} .rule .d{color:var(--dim);font-size:12.5px}
 .chat{display:flex;flex-direction:column;min-height:0;gap:8px}
 #log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:9px}
+.chat.closed{flex:none}
 .msg{white-space:pre-wrap;word-break:break-word}
 .me{align-self:flex-end;background:var(--accent);color:#fff;padding:6px 10px;
     border-radius:10px;max-width:85%}
@@ -86,25 +97,65 @@ button:disabled{opacity:.45;cursor:default}
 <body>
 <div class="left">
   <div class="bar" id="bar">불러오는 중</div>
-  <div class="panel rep"><h2>켜 둔 동안 있었던 일</h2><div id="rep"></div></div>
+  <div class="panel sec" data-k="rep"><h2 class="hd">켜 둔 동안 있었던 일</h2>
+    <div class="bd" id="rep" style="height:190px"></div></div>
   <div class="panel">
-    <h2>클러스터</h2><div id="cl"></div>
-    <h2 style="margin-top:12px">색인</h2><div id="ix"></div>
-    <h2 style="margin-top:12px">트래픽</h2><div id="tf" class="cards"></div>
+    <div class="sec" data-k="cl"><h2 class="hd">클러스터</h2><div class="bd" id="cl"></div></div>
+    <div class="sec" data-k="ix"><h2 class="hd">색인</h2><div class="bd" id="ix"></div></div>
+    <div class="sec" data-k="tf"><h2 class="hd">트래픽</h2>
+      <div class="bd cards" id="tf"></div></div>
   </div>
-  <div class="panel"><h2>규칙 판정</h2><div id="rules"></div></div>
-  <div class="panel" style="max-height:260px"><h2>Plan — 에이전트가 하는 일</h2>
-    <div id="plan"><div class="foot">대기 중</div></div></div>
+  <div class="panel sec" data-k="rules"><h2 class="hd">규칙 판정</h2>
+    <div class="bd" id="rules" style="height:240px"></div></div>
+  <div class="panel sec" data-k="plan"><h2 class="hd">Plan — 에이전트가 하는 일</h2>
+    <div class="bd" id="plan" style="height:120px"><div class="foot">대기 중</div></div></div>
 </div>
-<div class="panel chat">
-  <h2>채팅</h2>
-  <div id="log"></div>
+<div class="split" id="split" title="끌어서 폭 조절"></div>
+<div class="panel chat sec" data-k="chat">
+  <h2 class="hd">채팅</h2>
+  <div class="bd" id="log" style="resize:none">
   <form id="f"><input id="q" placeholder="무엇이든 물어보세요" autocomplete="off">
     <button id="send">보내기</button></form>
   <div id="foot" class="foot"></div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
+const mem={
+  get:k=>{try{return localStorage.getItem(k)}catch{return null}},
+  set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}},
+};
+
+function initSections(){
+  document.querySelectorAll(".sec").forEach(sec=>{
+    const key="ui:"+sec.dataset.k, hd=sec.querySelector(".hd"), bd=sec.querySelector(".bd");
+    if(mem.get(key+":closed")==="1") sec.classList.add("closed");
+    const h=mem.get(key+":h"); if(h&&bd) bd.style.height=h;
+    hd.addEventListener("click",()=>{
+      sec.classList.toggle("closed");
+      mem.set(key+":closed", sec.classList.contains("closed")?"1":"0");
+    });
+    if(bd&&window.ResizeObserver){
+      new ResizeObserver(()=>{ if(bd.style.height) mem.set(key+":h", bd.style.height); })
+        .observe(bd);
+    }
+  });
+  const w=mem.get("ui:chatw"); if(w) document.body.style.setProperty("--chatw",w);
+  const sp=$("#split");
+  sp.addEventListener("mousedown",e=>{
+    e.preventDefault(); sp.classList.add("on");
+    const move=ev=>{
+      const w=Math.min(900,Math.max(260,innerWidth-ev.clientX-14))+"px";
+      document.body.style.setProperty("--chatw",w); mem.set("ui:chatw",w);
+    };
+    const up=()=>{ sp.classList.remove("on");
+      removeEventListener("mousemove",move); removeEventListener("mouseup",up); };
+    addEventListener("mousemove",move); addEventListener("mouseup",up);
+  });
+  sp.addEventListener("dblclick",()=>{
+    document.body.style.setProperty("--chatw","420px"); mem.set("ui:chatw","420px");
+  });
+}
+initSections();
 function planLine(t){const d=document.createElement("div");d.textContent=t;$("#plan").appendChild(d);$("#plan").scrollTop=1e9;}
 const ago=t=>t?Math.max(0,Math.floor(Date.now()/1000)-t)+"초 전":"-";
 
