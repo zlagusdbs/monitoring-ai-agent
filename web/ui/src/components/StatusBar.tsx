@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import { Report, Settings } from "../api";
-import { hm } from "../ui";
 
 /** 서버가 준 남은 초에서 1초씩 깎는다. 새 값이 오면 거기에 맞춘다. */
 function useCountdown(seconds: number | undefined) {
@@ -31,7 +30,6 @@ export function StatusBar({ report, settings, onToggleAuto, onSettings }: Props)
   const on = settings.auto_check === "on";
   const acted = report.items.filter((a) => a.outcome === "sent").length;
   const escalated = report.items.filter((a) => a.verdict === "escalate").length;
-  const minutes = Math.floor((report.now - report.started) / 60);
 
   return (
     <div className="bar">
@@ -69,9 +67,6 @@ export function StatusBar({ report, settings, onToggleAuto, onSettings }: Props)
         사람 호출 <b>{escalated}</b>
       </span>
       <span>실행 {settings.action_enabled ? "켜짐" : "꺼짐 (기록만)"}</span>
-      <span>
-        {hm(report.started)} 켬 · {minutes}분
-      </span>
     </div>
   );
 }
