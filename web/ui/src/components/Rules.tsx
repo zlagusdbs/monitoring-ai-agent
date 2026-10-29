@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { Rule, Status, api } from "../api";
+import { Rule, Settings, Status, api } from "../api";
+import { RuleDetail } from "./RuleDetail";
 
 type Throttle = { type?: string; uri?: string; rate?: number; ttl_minutes?: number };
 
@@ -44,7 +45,16 @@ function ThrottleAction({ rule }: { rule: Rule }) {
 
 const ORDER: Record<string, number> = { firing: 0, skipped: 1, ok: 2 };
 
-export function Rules({ status, onChanged }: { status: Status; onChanged: () => void }) {
+export function Rules({
+  status,
+  settings,
+  onChanged,
+}: {
+  status: Status;
+  settings: Settings | null;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
   const rules = [...status.rules].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9));
   if (rules.length === 0) return <div className="foot">켜진 규칙이 없다</div>;
 
@@ -54,7 +64,14 @@ export function Rules({ status, onChanged }: { status: Status; onChanged: () => 
         <div className="rule" key={r.id}>
           <span className={`badge ${r.state}`}>{r.state}</span>
           <span style={{ flex: 1 }}>
-            <span className="t">{r.title}</span> <span className="d">· {r.severity}</span>
+            <span
+              className="t"
+              title="눌러서 어떻게 처리되는지 본다"
+              onClick={() => setOpen(open === r.id ? null : r.id)}
+            >
+              {r.title}
+            </span>{" "}
+            <span className="d">· {r.severity}</span>
             <button
               className="rbtn"
               onClick={async () => {
@@ -75,6 +92,7 @@ export function Rules({ status, onChanged }: { status: Status; onChanged: () => 
               지우기
             </button>
             <div className="d">{r.detail}</div>
+            {open === r.id && <RuleDetail rule={r} settings={settings} />}
             <ThrottleAction rule={r} />
           </span>
         </div>

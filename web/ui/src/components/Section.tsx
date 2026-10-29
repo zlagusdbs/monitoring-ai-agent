@@ -5,6 +5,7 @@ import { mem } from "../ui";
 type Props = {
   id: string;
   title: string;
+  help?: string;
   height?: number;
   resizable?: boolean;
   bodyClass?: string;
@@ -12,7 +13,15 @@ type Props = {
 };
 
 /** 제목을 누르면 접히고, 아래 모서리를 끌면 높이가 바뀐다. 둘 다 기억한다. */
-export function Section({ id, title, height, resizable = true, bodyClass, children }: Props) {
+export function Section({
+  id,
+  title,
+  help,
+  height,
+  resizable = true,
+  bodyClass,
+  children,
+}: Props) {
   const key = `ui:${id}`;
   const [closed, setClosed] = useState(() => mem.get(`${key}:closed`) === "1");
   const body = useRef<HTMLDivElement>(null);
@@ -41,6 +50,11 @@ export function Section({ id, title, height, resizable = true, bodyClass, childr
     <div className={`sec${closed ? " closed" : ""}`}>
       <h2 className="hd" onClick={toggle}>
         {title}
+        {help && (
+          <span className="help" data-tip={help} onClick={(e) => e.stopPropagation()}>
+            ?
+          </span>
+        )}
       </h2>
       <div
         ref={body}
